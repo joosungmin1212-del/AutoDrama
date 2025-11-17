@@ -1,0 +1,95 @@
+# 작당모의 프로젝트 설정
+
+# 모델 경로
+models:
+  llm: "meta-llama/Llama-3.1-70B-Instruct"
+  image: "black-forest-labs/FLUX.1-dev"
+  tts: "pretrained_models/CosyVoice-300M"
+  whisper: "large-v3"
+
+  # HuggingFace 캐시 디렉토리
+  cache_dir: "/workspace/huggingface_cache"
+
+# 출력 경로
+output:
+  base_dir: "/workspace/outputs"
+
+# LLM 파라미터
+llm:
+  # Phase 1: Outline
+  outline:
+    temperature: 0.7
+    max_tokens: 2000
+
+  # Phase 2: Hook
+  hook:
+    temperature: 0.8
+    max_tokens: 1000
+
+  # Phase 3-6: Parts
+  parts:
+    temperature: 0.7
+    max_tokens: 6000
+
+# 이미지 생성 파라미터
+image_generation:
+  # FLUX.1-dev 설정
+  num_inference_steps: 50
+  guidance_scale: 7.5
+  width: 1280
+  height: 720
+  batch_size: 8
+
+  # 이미지 개수
+  hook_images: 5
+  main_images: 15
+
+# TTS 파라미터
+tts:
+  # CosyVoice 설정
+  sample_rate: 22050
+  batch_size: 10
+  speaker: "default"  # CosyVoice speaker ID
+
+# Whisper 파라미터
+whisper:
+  language: "ko"
+  beam_size: 5
+  word_timestamps: true
+  vad_filter: true
+
+# FFmpeg 설정
+ffmpeg:
+  # 비디오 설정
+  video_codec: "libx264"
+  preset: "fast"
+  crf: 23
+
+  # 오디오 설정
+  audio_codec: "aac"
+  audio_bitrate: "192k"
+
+  # 비디오 파라미터
+  framerate: 24
+  pixel_format: "yuv420p"
+  resolution: "1280x720"
+
+  # 자막 스타일
+  subtitle_style:
+    font_name: "NanumGothic"
+    font_size: 24
+    primary_color: "&H00FFFFFF"
+    outline_color: "&H00000000"
+    outline: 2
+    shadow: 1
+    alignment: 2  # 하단 중앙
+
+# Google Drive 백업
+google_drive:
+  enabled: true
+  folder_name: "작당모의"
+
+# 로깅
+logging:
+  level: "INFO"
+  file: "pipeline.log"
