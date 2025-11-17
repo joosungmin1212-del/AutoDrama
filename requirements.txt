@@ -1,8 +1,0 @@
-# 오디오 드라마 자동 생성 시스템 - 필수 패키지
-
-# LLM API (둘 중 하나만 설치해도 됨)
-openai>=1.0.0          # runpod, vLLM, Ollama 등 OpenAI 호환 API용
-anthropic>=0.40.0      # Anthropic Claude API용
-
-# 환경 변수 관리
-python-dotenv>=1.0.0
