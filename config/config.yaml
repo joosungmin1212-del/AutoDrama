@@ -1,0 +1,44 @@
+# 오디오 드라마 생성 설정 파일
+
+# LLM 설정
+llm:
+  model: "claude-sonnet-4-5-20250929"
+  temperature: 1.0
+  max_tokens:
+    outline: 8000
+    hook: 2000
+    part: 16000
+    images: 10000
+
+# 출력 설정
+output:
+  base_dir: "output"
+  subdirs:
+    outlines: "outlines"
+    hooks: "hooks"
+    parts: "parts"
+    images: "images"
+
+# 드라마 구성
+drama:
+  total_duration_minutes: 120  # 2시간
+  parts:
+    - number: 1
+      target_length: "12,000~13,000"
+      description: "시작~1/4 구간"
+    - number: 2
+      target_length: "12,000~13,000"
+      description: "2/4 구간"
+    - number: 3
+      target_length: "12,000~13,000"
+      description: "3/4 구간 (클라이맥스)"
+    - number: 4
+      target_length: "11,500~12,500"
+      description: "마지막 1/4 구간"
+
+# 이미지 설정
+images:
+  hook_scenes: 5
+  main_scenes: 15
+  scene_duration: 36  # 초
+  flux_style: "Korean drama style, high quality, realistic, cinematic"
