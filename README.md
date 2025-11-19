@@ -51,6 +51,12 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### CosyVoice 설치
+CosyVoice는 별도로 설치해야 합니다:
+```bash
+./install_cosyvoice.sh
+```
+
 4. **설정 파일 수정**
 `config.yaml` 파일을 열어 환경에 맞게 수정합니다:
 - 모델 경로
