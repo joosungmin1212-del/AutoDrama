@@ -20,9 +20,9 @@ class LLMEngine:
             download_dir=self.config['models']['cache_dir'],
             tensor_parallel_size=1,
             quantization="awq",
-            enforce_eager=True,
-            enable_chunked_prefill=False,
-            gpu_memory_utilization=0.85
+            enforce_eager=False,
+            enable_chunked_prefill=True,
+            gpu_memory_utilization=0.92
         )
         
         print("Model loaded successfully!")
