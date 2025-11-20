@@ -17,6 +17,18 @@ pip install vllm==0.6.6.post1 --break-system-packages
 echo "[4] torchaudio 설치..."
 pip install torchaudio==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
 
+echo "[5-0] PyAV / faster-whisper 빌드를 위한 시스템 패키지 설치..."
+apt-get install -y \
+  pkg-config \
+  ffmpeg \
+  libavformat-dev \
+  libavdevice-dev \
+  libavfilter-dev \
+  libavcodec-dev \
+  libavutil-dev \
+  libswscale-dev \
+  libswresample-dev
+
 echo "[5] faster-whisper 설치..."
 pip install faster-whisper==0.10.0 --break-system-packages
 
