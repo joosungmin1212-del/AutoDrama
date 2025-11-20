@@ -1,79 +1,255 @@
 """
 TTS (Text-to-Speech) 모듈
+Coqui TTS를 사용한 한국어 음성 합성
 """
 
 from pathlib import Path
+from TTS.api import TTS
+import os
+from typing import Optional
+import torch
+
+
+class TTSEngine:
+    """
+    Coqui TTS 기반 음성 합성 엔진
+    """
+
+    def __init__(
+        self,
+        model_name: str = "tts_models/ko/cv/vits",
+        device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    ):
+        """
+        TTS 엔진 초기화
+
+        Args:
+            model_name: TTS 모델 이름 (한국어 모델 권장)
+            device: 디바이스 (cuda/cpu)
+        """
+        print(f"Loading TTS model: {model_name}")
+        print(f"  Device: {device}")
+
+        self.device = device
+        self.tts = TTS(model_name=model_name).to(device)
+
+        print("✓ TTS model loaded successfully!")
+
+    def synthesize(
+        self,
+        text: str,
+        output_path: str,
+        speaker: Optional[str] = None,
+        language: Optional[str] = None
+    ) -> str:
+        """
+        텍스트를 음성으로 합성
+
+        Args:
+            text: 합성할 텍스트
+            output_path: 출력 파일 경로 (.wav)
+            speaker: 화자 (모델에 따라 다름)
+            language: 언어 (모델에 따라 다름)
+
+        Returns:
+            생성된 오디오 파일 경로
+        """
+        # 출력 디렉토리 생성
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        print(f"Synthesizing: {text[:50]}...")
+
+        # TTS 생성
+        self.tts.tts_to_file(
+            text=text,
+            file_path=output_path,
+            speaker=speaker,
+            language=language
+        )
+
+        print(f"  ✓ Saved: {output_path}")
+        return output_path
+
+    def synthesize_long_text(
+        self,
+        text: str,
+        output_path: str,
+        chunk_size: int = 500,
+        speaker: Optional[str] = None
+    ) -> str:
+        """
+        긴 텍스트를 청크로 나눠서 합성 후 병합
+
+        Args:
+            text: 긴 텍스트
+            output_path: 출력 파일 경로
+            chunk_size: 청크 크기 (문자 수)
+            speaker: 화자
+
+        Returns:
+            생성된 오디오 파일 경로
+        """
+        # 문장 단위로 분리
+        sentences = split_sentences(text)
+
+        # 청크로 그룹화
+        chunks = []
+        current_chunk = ""
+        for sentence in sentences:
+            if len(current_chunk) + len(sentence) < chunk_size:
+                current_chunk += sentence + " "
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = sentence + " "
+
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        print(f"Synthesizing {len(chunks)} chunks...")
+
+        # 임시 파일들 생성
+        temp_dir = Path(output_path).parent / "temp_audio"
+        temp_dir.mkdir(exist_ok=True)
+
+        temp_files = []
+        for i, chunk in enumerate(chunks):
+            temp_file = temp_dir / f"chunk_{i:03d}.wav"
+            self.synthesize(chunk, str(temp_file), speaker=speaker)
+            temp_files.append(str(temp_file))
+
+        # FFmpeg로 병합
+        print("Merging audio chunks...")
+        merge_audio_files(temp_files, output_path)
+
+        # 임시 파일 삭제
+        for temp_file in temp_files:
+            os.remove(temp_file)
+        temp_dir.rmdir()
+
+        print(f"✓ Long text synthesis complete: {output_path}")
+        return output_path
+
+
+def split_sentences(text: str) -> list:
+    """
+    텍스트를 문장 단위로 분리
+
+    한국어 문장 부호 기준: ., !, ?, …
+
+    Args:
+        text: 분리할 텍스트
+
+    Returns:
+        문장 리스트
+    """
+    import re
+
+    # 한국어 문장 부호로 분리
+    sentences = re.split(r'([.!?…])', text)
+
+    # 문장 부호를 문장에 다시 붙임
+    result = []
+    for i in range(0, len(sentences) - 1, 2):
+        sentence = sentences[i].strip()
+        punct = sentences[i + 1] if i + 1 < len(sentences) else ""
+        if sentence:
+            result.append(sentence + punct)
+
+    # 마지막 문장 처리
+    if len(sentences) % 2 == 1 and sentences[-1].strip():
+        result.append(sentences[-1].strip())
+
+    return [s.strip() for s in result if s.strip()]
+
+
+def merge_audio_files(input_files: list, output_file: str):
+    """
+    여러 오디오 파일을 하나로 병합 (FFmpeg 사용)
+
+    Args:
+        input_files: 입력 파일 경로 리스트
+        output_file: 출력 파일 경로
+    """
+    import subprocess
+
+    # 파일 리스트 생성
+    list_file = Path(output_file).parent / "filelist.txt"
+    with open(list_file, 'w') as f:
+        for input_file in input_files:
+            f.write(f"file '{input_file}'\n")
+
+    # FFmpeg concat
+    cmd = [
+        'ffmpeg', '-f', 'concat', '-safe', '0',
+        '-i', str(list_file),
+        '-c', 'copy',
+        output_file,
+        '-y'  # Overwrite
+    ]
+
+    subprocess.run(cmd, check=True, capture_output=True)
+
+    # 리스트 파일 삭제
+    list_file.unlink()
 
 
 def generate_tts(
     text: str,
     output_path: str,
-    batch_size: int = 10
+    model_name: str = "tts_models/ko/cv/vits",
+    chunk_size: int = 500
 ) -> str:
     """
-    CosyVoice를 사용하여 TTS 오디오를 생성합니다.
+    편의 함수: 텍스트 → TTS 오디오 생성
 
     Args:
-        text (str): 변환할 텍스트
-        output_path (str): 출력 오디오 파일 경로 (.mp3)
-        batch_size (int): 배치 크기 (기본값: 10)
+        text: 입력 텍스트
+        output_path: 출력 파일 경로
+        model_name: TTS 모델
+        chunk_size: 긴 텍스트 청크 크기
 
     Returns:
-        str: 생성된 오디오 파일 경로
-
-    Raises:
-        RuntimeError: TTS 생성 실패 시
-
-    TODO:
-        - CosyVoice 모델 초기화
-        - 문장 분리 (split_sentences)
-        - 배치 TTS 생성
-        - 오디오 세그먼트 병합
-        - MP3 파일로 저장
-        - 에러 핸들링
-
-    Example:
-        >>> from cosyvoice.cli.cosyvoice import CosyVoice
-        >>> import torch
-        >>>
-        >>> cozy = CosyVoice('pretrained_models/CosyVoice-300M')
-        >>>
-        >>> # 문장 분리
-        >>> sentences = split_sentences(text)
-        >>>
-        >>> # 배치 TTS
-        >>> audio_segments = []
-        >>> for i in range(0, len(sentences), batch_size):
-        ...     batch = sentences[i:i+batch_size]
-        ...     for sentence in batch:
-        ...         audio = cozy.inference_sft(sentence, speaker="default")
-        ...         audio_segments.append(audio)
-        >>>
-        >>> # 병합
-        >>> final_audio = torch.cat(audio_segments, dim=-1)
-        >>>
-        >>> # 저장
-        >>> import torchaudio
-        >>> torchaudio.save(output_path, final_audio, 22050)
+        생성된 오디오 파일 경로
     """
-    # TODO: CosyVoice 구현
-    raise NotImplementedError("TTS module not implemented yet")
+    engine = get_tts_engine(model_name=model_name)
+
+    if len(text) > chunk_size:
+        return engine.synthesize_long_text(
+            text=text,
+            output_path=output_path,
+            chunk_size=chunk_size
+        )
+    else:
+        return engine.synthesize(
+            text=text,
+            output_path=output_path
+        )
 
 
-def split_sentences(text: str) -> list:
+# ============================================
+# 싱글톤 패턴
+# ============================================
+_tts_engine = None
+
+
+def get_tts_engine(model_name: str = "tts_models/ko/cv/vits") -> TTSEngine:
     """
-    텍스트를 문장 단위로 분리합니다.
+    TTS 엔진 싱글톤 접근
 
     Args:
-        text (str): 분리할 텍스트
+        model_name: TTS 모델 이름
 
     Returns:
-        list: 문장 리스트
-
-    TODO:
-        - 한국어 문장 분리 로직 구현
-        - 문장 부호 기준 (., !, ?, 등)
-        - 적절한 길이로 분할
+        TTSEngine 인스턴스
     """
-    # TODO: 문장 분리 로직 구현
-    raise NotImplementedError("Sentence splitting not implemented yet")
+    global _tts_engine
+    if _tts_engine is None:
+        _tts_engine = TTSEngine(model_name=model_name)
+    return _tts_engine
+
+
+def reset_tts_engine():
+    """TTS 엔진 리셋 (테스트용)"""
+    global _tts_engine
+    _tts_engine = None

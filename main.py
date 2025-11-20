@@ -1,13 +1,15 @@
 """
-작당모의 프로젝트 - 메인 파이프라인
-
-제목 입력 → 2시간 한국 드라마 영상 자동 생성
+AutoDrama - 제목만 입력하면 2시간 드라마 자동 생성
+완전 자동화 파이프라인
 """
 
 import yaml
+import json
+import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 프롬프트 모듈
 from prompts.outline import generate_outline_prompt
@@ -16,14 +18,14 @@ from prompts.part import generate_part_prompt
 from prompts.hook_images import generate_hook_images_prompt
 from prompts.main_images import generate_main_images_prompt
 
-# 파이프라인 모듈
-from pipeline.llm import call_llm
-from pipeline.image_gen import generate_images
+# 파이프라인 모듈 (신규 API)
+from pipeline.llm import get_llm_engine
+from pipeline.image import get_image_generator, generate_images
 from pipeline.tts import generate_tts
 from pipeline.subtitle import generate_subtitles
 from pipeline.video import compile_video
 
-# 유틸리티 모듈
+# 유틸리티
 from utils.file_utils import (
     save_json, load_json,
     save_text, load_text,
@@ -33,27 +35,37 @@ from utils.logger import setup_logger, PhaseLogger
 
 
 def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
-    """
-    설정 파일을 로드합니다.
+    """설정 파일 로드"""
+    if not Path(config_path).exists():
+        # 기본 설정 생성
+        default_config = {
+            "output": {"base_dir": "./output"},
+            "logging": {"file": "./autodrama.log", "level": "INFO"},
+            "llm": {
+                "outline": {"temperature": 0.7, "max_tokens": 4096},
+                "hook": {"temperature": 0.8, "max_tokens": 2048},
+                "parts": {"temperature": 0.75, "max_tokens": 16384}
+            },
+            "image": {"batch_size": 4, "steps": 4},
+            "tts": {"model": "tts_models/ko/cv/vits", "chunk_size": 500},
+            "whisper": {"model": "large-v3"},
+            "google_drive": {"enabled": False}
+        }
+        with open(config_path, 'w') as f:
+            yaml.dump(default_config, f, allow_unicode=True)
+        return default_config
 
-    Args:
-        config_path (str): 설정 파일 경로
-
-    Returns:
-        Dict[str, Any]: 설정 딕셔너리
-    """
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
 
 def main(title: str) -> None:
     """
-    메인 파이프라인을 실행합니다.
+    메인 파이프라인 실행
 
     Args:
-        title (str): 드라마 제목
+        title: 드라마 제목
     """
-    # 설정 로드
     config = load_config()
 
     # 로거 설정
@@ -63,202 +75,242 @@ def main(title: str) -> None:
     )
     phase_logger = PhaseLogger(logger)
 
-    # 시작 시간
     start_time = datetime.now()
-    logger.info("=" * 50)
-    logger.info(f"작당모의 파이프라인 시작: {title}")
-    logger.info("=" * 50)
+    logger.info("=" * 60)
+    logger.info(f"AutoDrama Pipeline Started: {title}")
+    logger.info("=" * 60)
 
     # 출력 디렉토리 생성
     dirs = create_output_dirs(title, config["output"]["base_dir"])
     logger.info(f"Output directory: {dirs['base']}")
 
     try:
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 1: Outline 생성 (1.5분)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 1: Outline 생성 (1.0분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         phase_logger.start_phase(1, "Outline Generation")
-        phase_logger.info("Generating outline prompt...")
 
-        # TODO: Outline 프롬프트 생성
+        llm = get_llm_engine(config_path="config.yaml")
+
         outline_prompt = generate_outline_prompt(title)
+        outline_data = llm.call_llm(outline_prompt, phase="outline")
+        save_json(outline_data, f"{dirs['base']}/outline.json")
 
-        phase_logger.info("Calling LLM for outline...")
-        # TODO: LLM 호출
-        # outline_json_str = call_llm(
-        #     outline_prompt,
-        #     temperature=config["llm"]["outline"]["temperature"],
-        #     max_tokens=config["llm"]["outline"]["max_tokens"]
-        # )
-        # outline_data = json.loads(outline_json_str)
-
-        phase_logger.info("Saving outline...")
-        # TODO: outline.json 저장
-        # save_json(outline_data, f"{dirs['base']}/outline.json")
-
+        phase_logger.info(f"Outline generated: {len(outline_data.get('outline_full', ''))} chars")
         phase_logger.end_phase(1, "Outline Generation")
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 2: Hook 생성 (2분)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 2: Hook 생성 (0.3분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         phase_logger.start_phase(2, "Hook Generation")
 
-        # TODO: Hook 프롬프트 생성
-        # hook_prompt = generate_hook_prompt(title, outline_data["outline_full"])
+        hook_prompt = generate_hook_prompt(title, outline_data["outline_full"])
+        hook_text = llm.call_llm_text(hook_prompt, phase="hook")
+        save_text(hook_text, f"{dirs['hook']}/hook.txt")
 
-        phase_logger.info("Calling LLM for hook...")
-        # TODO: LLM 호출
-        # hook_text = call_llm(
-        #     hook_prompt,
-        #     temperature=config["llm"]["hook"]["temperature"],
-        #     max_tokens=config["llm"]["hook"]["max_tokens"]
-        # )
-
-        phase_logger.info("Saving hook...")
-        # TODO: hook.txt 저장
-        # save_text(hook_text, f"{dirs['hook']}/hook.txt")
-
+        phase_logger.info(f"Hook generated: {len(hook_text)} chars")
         phase_logger.end_phase(2, "Hook Generation")
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 3-6: Parts 1-4 생성 (10분)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 3: Hook Images Prompts (0.5분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        phase_logger.start_phase(3, "Hook Images Prompts")
+
+        hook_images_prompt = generate_hook_images_prompt(hook_text)
+        hook_images_data = llm.call_llm(hook_images_prompt, phase="outline")
+        save_json(hook_images_data, f"{dirs['hook']}/image_prompts.json")
+
+        phase_logger.info(f"Hook image prompts: {hook_images_data['total_scenes']} scenes")
+        phase_logger.end_phase(3, "Hook Images Prompts")
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 4: Hook Images 생성 (0.8분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        phase_logger.start_phase(4, "Hook Images Generation")
+
+        image_gen = get_image_generator()
+        hook_image_paths = image_gen.generate_from_json(
+            hook_images_data['scenes'],
+            str(dirs['hook_images']),
+            num_inference_steps=config["image"]["steps"]
+        )
+
+        phase_logger.info(f"Hook images generated: {len(hook_image_paths)} images")
+        phase_logger.end_phase(4, "Hook Images Generation")
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 5: Parts 1-4 생성 (병렬) (2.5분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        phase_logger.start_phase(5, "Parts 1-4 Generation (Parallel)")
+
         previous_parts = []
         parts_text = []
 
-        for part_num in range(1, 5):
-            phase_logger.start_phase(part_num + 2, f"Part {part_num} Generation")
+        # 병렬 생성
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = []
 
-            # TODO: Part 프롬프트 생성
-            # part_prompt = generate_part_prompt(
-            #     title,
-            #     outline_data["outline_full"],
-            #     previous_parts if previous_parts else None
-            # )
+            for part_num in range(1, 5):
+                part_prompt = generate_part_prompt(
+                    title,
+                    outline_data["outline_full"],
+                    previous_parts if previous_parts else None
+                )
 
-            phase_logger.info(f"Calling LLM for Part {part_num}...")
-            # TODO: LLM 호출
-            # part_response = call_llm(
-            #     part_prompt,
-            #     temperature=config["llm"]["parts"]["temperature"],
-            #     max_tokens=config["llm"]["parts"]["max_tokens"]
-            # )
+                # 각 Part를 병렬로 제출
+                future = executor.submit(
+                    llm.call_llm_text,
+                    part_prompt,
+                    "parts"
+                )
+                futures.append((part_num, future))
 
-            # TODO: Part 본문과 요약 분리
-            # if part_num < 4:  # Part 1-3은 요약 포함
-            #     parts = part_response.split("===SUMMARY===")
-            #     part_text = parts[0].strip()
-            #     part_summary = parts[1].strip()
-            #     save_text(part_text, f"{dirs['main']}/part{part_num}.txt")
-            #     save_text(part_summary, f"{dirs['main']}/part{part_num}_summary.txt")
-            #     previous_parts.append(part_summary)
-            # else:  # Part 4는 요약 없음
-            #     part_text = part_response.strip()
-            #     save_text(part_text, f"{dirs['main']}/part4.txt")
+            # 결과 수집 (순서 보장)
+            for part_num, future in sorted(futures, key=lambda x: x[0]):
+                part_text = future.result()
+                parts_text.append(part_text)
 
-            # parts_text.append(part_text)
+                # Part 저장
+                save_text(part_text, f"{dirs['main']}/part{part_num}.txt")
+                phase_logger.info(f"Part {part_num} completed: {len(part_text)} chars")
 
-            phase_logger.end_phase(part_num + 2, f"Part {part_num} Generation")
+                # Part 1-3은 요약 생성 (다음 Part를 위해)
+                if part_num < 4:
+                    summary = part_text[:500] + "..."  # 간단한 요약
+                    previous_parts.append(summary)
 
-        # TODO: Main 전체 병합
-        # main_full = "\n\n".join(parts_text)
-        # save_text(main_full, f"{dirs['main']}/main_full.txt")
+        # Main 전체 병합
+        main_full = "\n\n".join(parts_text)
+        save_text(main_full, f"{dirs['main']}/main_full.txt")
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 7: 이미지 프롬프트 생성 (1.5분)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        phase_logger.start_phase(7, "Image Prompts Generation")
+        phase_logger.info(f"All parts generated: {len(main_full)} chars total")
+        phase_logger.end_phase(5, "Parts 1-4 Generation")
 
-        # Phase 7-1: Hook 이미지 프롬프트
-        phase_logger.info("Generating hook image prompts...")
-        # TODO: Hook 이미지 프롬프트 생성
-        # hook_images_prompt = generate_hook_images_prompt(hook_text)
-        # hook_images_json = call_llm(hook_images_prompt)
-        # save_json(json.loads(hook_images_json), f"{dirs['hook']}/image_prompts.json")
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 6: Main Images Prompts (0.6분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        phase_logger.start_phase(6, "Main Images Prompts")
 
-        # Phase 7-2: Main 이미지 프롬프트
-        phase_logger.info("Generating main image prompts...")
-        # TODO: Main 이미지 프롬프트 생성
-        # main_images_prompt = generate_main_images_prompt(
-        #     previous_parts[0],  # Part 1 요약
-        #     previous_parts[1],  # Part 2 요약
-        #     previous_parts[2],  # Part 3 요약
-        #     parts_text[3]       # Part 4 전체
-        # )
-        # main_images_json = call_llm(main_images_prompt)
-        # save_json(json.loads(main_images_json), f"{dirs['main']}/image_prompts.json")
+        main_images_prompt = generate_main_images_prompt(
+            previous_parts[0] if len(previous_parts) > 0 else "",
+            previous_parts[1] if len(previous_parts) > 1 else "",
+            previous_parts[2] if len(previous_parts) > 2 else "",
+            parts_text[3] if len(parts_text) > 3 else ""
+        )
+        main_images_data = llm.call_llm(main_images_prompt, phase="outline")
+        save_json(main_images_data, f"{dirs['main']}/image_prompts.json")
 
-        phase_logger.end_phase(7, "Image Prompts Generation")
+        phase_logger.info(f"Main image prompts: {main_images_data['total_scenes']} scenes")
+        phase_logger.end_phase(6, "Main Images Prompts")
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 8: 병렬 처리 - 이미지 생성 + Main TTS (5분)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        phase_logger.start_phase(8, "Parallel: Images + Main TTS")
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 7: Main Images 생성 (2.0분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        phase_logger.start_phase(7, "Main Images Generation")
 
-        # TODO: 병렬 처리 구현
-        # from concurrent.futures import ThreadPoolExecutor
-        #
-        # with ThreadPoolExecutor(max_workers=2) as executor:
-        #     # Thread 1: 이미지 생성
-        #     future_images = executor.submit(generate_all_images, dirs, config)
-        #
-        #     # Thread 2: Main TTS 생성
-        #     future_tts = executor.submit(
-        #         generate_tts,
-        #         main_full,
-        #         f"{dirs['main']}/main_audio.mp3",
-        #         config["tts"]["batch_size"]
-        #     )
-        #
-        #     # 결과 대기
-        #     images = future_images.result()
-        #     audio = future_tts.result()
+        main_image_paths = image_gen.generate_from_json(
+            main_images_data['scenes'],
+            str(dirs['main_images']),
+            num_inference_steps=config["image"]["steps"]
+        )
 
-        phase_logger.info("Generating images...")
-        # TODO: 이미지 생성 (Hook + Main)
+        phase_logger.info(f"Main images generated: {len(main_image_paths)} images")
+        phase_logger.end_phase(7, "Main Images Generation")
 
-        phase_logger.info("Generating Main TTS...")
-        # TODO: Main TTS 생성
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 8: TTS 생성 (병렬 처리) (1.5분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        phase_logger.start_phase(8, "TTS Generation (Parallel)")
 
-        phase_logger.end_phase(8, "Parallel: Images + Main TTS")
+        hook_audio_path = f"{dirs['hook']}/hook_audio.wav"
+        main_audio_path = f"{dirs['main']}/main_audio.wav"
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 9: 자막 생성 (1.5분)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_hook_tts = executor.submit(
+                generate_tts,
+                hook_text,
+                hook_audio_path,
+                config["tts"]["model"]
+            )
+
+            future_main_tts = executor.submit(
+                generate_tts,
+                main_full,
+                main_audio_path,
+                config["tts"]["model"]
+            )
+
+            hook_audio = future_hook_tts.result()
+            main_audio = future_main_tts.result()
+
+        phase_logger.info("TTS generation completed")
+        phase_logger.end_phase(8, "TTS Generation")
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 9: Subtitle 생성 (1.5분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         phase_logger.start_phase(9, "Subtitle Generation")
 
-        phase_logger.info("Generating subtitles from Main audio...")
-        # TODO: 자막 생성
-        # generate_subtitles(
-        #     f"{dirs['main']}/main_audio.mp3",
-        #     f"{dirs['main']}/main_subtitles.srt"
-        # )
+        hook_subtitle_path = f"{dirs['hook']}/hook_subtitles.srt"
+        main_subtitle_path = f"{dirs['main']}/main_subtitles.srt"
 
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_hook_sub = executor.submit(
+                generate_subtitles,
+                hook_audio,
+                hook_subtitle_path,
+                config["whisper"]["model"]
+            )
+
+            future_main_sub = executor.submit(
+                generate_subtitles,
+                main_audio,
+                main_subtitle_path,
+                config["whisper"]["model"]
+            )
+
+            hook_subtitle = future_hook_sub.result()
+            main_subtitle = future_main_sub.result()
+
+        phase_logger.info("Subtitles generated")
         phase_logger.end_phase(9, "Subtitle Generation")
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 10: Main 영상 합성 (3분)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        phase_logger.start_phase(10, "Main Video Compilation")
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Phase 10: Video 합성 (1.0분)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        phase_logger.start_phase(10, "Video Compilation")
 
-        phase_logger.info("Compiling Main video...")
-        # TODO: Main 영상 합성
-        # compile_video(
-        #     dirs['main_images'],
-        #     f"{dirs['main']}/main_audio.mp3",
-        #     f"{dirs['main']}/main_subtitles.srt",
-        #     f"{dirs['main']}/main_video.mp4",
-        #     load_json(f"{dirs['main']}/image_prompts.json")
-        # )
+        hook_video_path = f"{dirs['hook']}/hook_video.mp4"
+        main_video_path = f"{dirs['main']}/main_video.mp4"
 
-        phase_logger.end_phase(10, "Main Video Compilation")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_hook_video = executor.submit(
+                compile_video,
+                str(dirs['hook_images']),
+                hook_audio,
+                hook_subtitle,
+                hook_video_path,
+                hook_images_data
+            )
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 11: 백업 및 정리 (0.1분)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        phase_logger.start_phase(11, "Backup and Cleanup")
+            future_main_video = executor.submit(
+                compile_video,
+                str(dirs['main_images']),
+                main_audio,
+                main_subtitle,
+                main_video_path,
+                main_images_data
+            )
 
-        # TODO: 메타데이터 생성
+            hook_video = future_hook_video.result()
+            main_video = future_main_video.result()
+
+        phase_logger.info("Videos compiled")
+        phase_logger.end_phase(10, "Video Compilation")
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 완료
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         end_time = datetime.now()
         elapsed = (end_time - start_time).total_seconds() / 60
 
@@ -267,46 +319,50 @@ def main(title: str) -> None:
             "created_at": start_time.isoformat(),
             "completed_at": end_time.isoformat(),
             "duration_minutes": round(elapsed, 1),
+            "hook_video": hook_video,
+            "main_video": main_video,
             "status": "completed"
         }
 
         save_json(metadata, f"{dirs['base']}/metadata.json")
-        phase_logger.info("Metadata saved")
 
-        # TODO: Google Drive 백업
-        if config["google_drive"]["enabled"]:
-            phase_logger.info("Backing up to Google Drive...")
-            # rclone sync 또는 Google Drive API 사용
-
-        phase_logger.end_phase(11, "Backup and Cleanup")
-
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # 완료
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        logger.info("=" * 50)
-        logger.info(f"파이프라인 완료! 총 소요 시간: {elapsed:.1f}분")
-        logger.info(f"출력 위치: {dirs['base']}")
-        logger.info("=" * 50)
+        logger.info("=" * 60)
+        logger.info(f"✓ Pipeline Completed!")
+        logger.info(f"  Total time: {elapsed:.1f} minutes")
+        logger.info(f"  Output: {dirs['base']}")
+        logger.info(f"  Hook video: {hook_video}")
+        logger.info(f"  Main video: {main_video}")
+        logger.info("=" * 60)
 
     except Exception as e:
-        phase_logger.error(f"Pipeline failed: {e}")
+        logger.error(f"Pipeline failed: {e}", exc_info=True)
         raise
 
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("작당모의 - 2시간 드라마 자동 생성 시스템")
-    print("=" * 50)
+    print("=" * 60)
+    print("AutoDrama - 2시간 드라마 자동 생성 시스템")
+    print("=" * 60)
     print()
 
     title = input("제목을 입력하세요: ").strip()
 
     if not title:
-        print("제목을 입력해주세요.")
+        print("❌ 제목을 입력해주세요.")
         exit(1)
 
     print()
-    print(f"'{title}' 생성을 시작합니다...")
+    print(f"✓ '{title}' 생성을 시작합니다...")
+    print(f"  예상 소요 시간: 약 11-13분")
     print()
 
-    main(title)
+    try:
+        main(title)
+        print()
+        print("✓ 완료! 영상이 생성되었습니다.")
+    except KeyboardInterrupt:
+        print("\n\n❌ 사용자가 중단했습니다.")
+        exit(1)
+    except Exception as e:
+        print(f"\n\n❌ 오류 발생: {e}")
+        exit(1)

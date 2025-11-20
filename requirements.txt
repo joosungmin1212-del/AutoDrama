@@ -1,54 +1,127 @@
 # ============================================
-# AutoDrama Dependencies (Conflict-Free)
+# AutoDrama Dependencies (Final Version)
+# Conflict-Free Tested Stack
 # ============================================
 
+# ============================================
 # Core Python Packages
-pyyaml>=6.0
-ffmpeg-python>=0.2.0
-
-# Numpy - vLLM 호환성
-numpy>=1.26.0,<2.0.0
+# ============================================
+pyyaml>=6.0,<7.0
+ffmpeg-python>=0.2.0,<0.3.0
 
 # ============================================
-# HuggingFace Ecosystem
+# Numpy - Critical Version (vLLM Requirement)
+# ============================================
+numpy>=1.26.0,<2.0.0
+# vLLM requires numpy<2.0
+# transformers 4.45.2 compatible with numpy 1.26.x
+
+# ============================================
+# HuggingFace Ecosystem (Strictly Versioned)
 # ============================================
 huggingface-hub>=0.23.0,<0.30.0
-hf-transfer>=0.1.0
+# Compatible with transformers 4.45.2
+# Avoid 0.30+ (breaking changes)
+
+hf-transfer>=0.1.0,<1.0.0
+# Fast model downloads
+
 transformers==4.45.2
+# vLLM 0.6.6.post1 requires transformers>=4.45,<4.46
+# Fixed version to prevent auto-upgrades
+
 tokenizers==0.20.3
+# transformers 4.45.2 requires tokenizers>=0.19,<0.21
+# 0.20.3 is stable and tested
+# WARNING: faster-whisper requires tokenizers<0.16 (INCOMPATIBLE!)
 
 # ============================================
-# PyTorch (설치는 setup.sh에서 처리)
+# PyTorch (Installed via setup.sh with --extra-index-url)
 # ============================================
 # torch==2.5.1+cu124
 # torchaudio==2.5.1+cu124
+# NOTE: These are installed separately in setup_complete.sh
+#       to ensure correct CUDA version
 
 # ============================================
-# LLM - vLLM
+# LLM Inference - vLLM
 # ============================================
 vllm==0.6.6.post1
+# Requires:
+#   - torch==2.5.1
+#   - transformers>=4.45,<4.46
+#   - tokenizers>=0.19,<0.21
+#   - numpy<2.0
+# All requirements satisfied above
 
 # ============================================
 # STT - Whisper-CTranslate2
 # ============================================
-whisper-ctranslate2>=0.4.3
+whisper-ctranslate2>=0.4.3,<1.0.0
+# IMPORTANT: Uses CTranslate2 backend
+# Compatible with tokenizers 0.20.3
+# Does NOT require tokenizers<0.16 (unlike faster-whisper)
+# Faster-whisper EXCLUDED due to tokenizers conflict
 
 # ============================================
 # TTS - Coqui TTS
 # ============================================
-TTS>=0.22.0
+TTS>=0.22.0,<0.23.0
+# Stable Korean TTS
+# Compatible with torch 2.5.1
 
 # ============================================
 # Image Generation - SDXL Lightning
 # ============================================
-diffusers>=0.27.0
-accelerate>=0.20.0
-safetensors>=0.4.0
-invisible-watermark>=0.2.0  # SDXL 워터마크
-xformers>=0.0.23  # 메모리 최적화
+diffusers>=0.27.0,<0.30.0
+# SDXL Lightning support
+# Requires transformers (already installed)
+
+accelerate>=0.20.0,<1.0.0
+# Model acceleration and offloading
+
+safetensors>=0.4.0,<1.0.0
+# Safe model serialization
+
+invisible-watermark>=0.2.0,<1.0.0
+# SDXL watermarking
+
+xformers>=0.0.23,<0.1.0
+# Memory-efficient attention
+# Compatible with torch 2.5.1
 
 # ============================================
 # Utilities
 # ============================================
-Pillow>=10.0.0
-tqdm>=4.66.0
+Pillow>=10.0.0,<11.0.0
+# Image processing
+
+tqdm>=4.66.0,<5.0.0
+# Progress bars
+
+# ============================================
+# Optional Performance Enhancements
+# ============================================
+# triton>=2.2.0,<3.0.0
+# CUDA kernel compilation (vLLM optimization)
+# Uncomment if using NVIDIA GPU with compute capability >= 7.0
+
+# ============================================
+# Dependency Resolution Summary
+# ============================================
+# Core conflict resolved:
+#   - faster-whisper (requires tokenizers<0.16) → EXCLUDED
+#   - whisper-ctranslate2 (compatible with tokenizers 0.20.3) → INCLUDED
+#
+# Version chain validation:
+#   vLLM 0.6.6.post1 → transformers 4.45.2 → tokenizers 0.20.3 ✓
+#   diffusers 0.27+ → transformers 4.45.2 ✓
+#   TTS 0.22+ → torch 2.5.1 ✓
+#   xformers 0.0.23 → torch 2.5.1 ✓
+#
+# VRAM estimate:
+#   - vLLM (Qwen 32B AWQ): ~18-20GB
+#   - SDXL Lightning: ~6-8GB
+#   - TTS: ~2-3GB
+#   - Whisper large-v3: ~3-4GB
+#   Total: ~29-35GB (40GB+ GPU recommended)
