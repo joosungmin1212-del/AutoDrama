@@ -4,7 +4,7 @@
 models:
   llm: "Qwen/Qwen2.5-32B-Instruct-AWQ"
   image: "black-forest-labs/FLUX.1-dev"
-  tts: "pretrained_models/CosyVoice-300M"
+  tts: "tts_models/ko/cv/vits"
   whisper: "large-v3"
 
   # HuggingFace 캐시 디렉토리
@@ -46,10 +46,8 @@ image_generation:
 
 # TTS 파라미터
 tts:
-  # CosyVoice 설정
   sample_rate: 22050
   batch_size: 10
-  speaker: "default"  # CosyVoice speaker ID
 
 # Whisper 파라미터
 whisper:

@@ -15,7 +15,7 @@
 
 - 📝 **자동 대본 생성**: Llama 3.1 70B를 사용한 50,000자 대본 생성
 - 🎨 **이미지 생성**: FLUX.1-dev를 사용한 고품질 드라마 이미지 (20장)
-- 🎤 **음성 합성**: CosyVoice를 사용한 자연스러운 한국어 TTS
+- 🎤 **음성 합성**: Coqui TTS (VITS)를 사용한 자연스러운 한국어 음성 생성
 - 📝 **자막 생성**: Faster-Whisper를 사용한 정확한 자막
 - 🎬 **영상 합성**: FFmpeg을 사용한 전문가급 비디오 편집
 
@@ -49,12 +49,6 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 3. **의존성 설치**
 ```bash
 pip install -r requirements.txt
-```
-
-### CosyVoice 설치
-CosyVoice는 별도로 설치해야 합니다:
-```bash
-./install_cosyvoice.sh
 ```
 
 4. **설정 파일 수정**

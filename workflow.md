@@ -39,10 +39,10 @@ Python: 3.11+
 /workspace/huggingface_cache/
 ├─ meta-llama/Llama-3.1-70B-Instruct (140GB)
 ├─ black-forest-labs/FLUX.1-dev (12GB)
-├─ CosyVoice-300M (3GB)
+├─ Coqui TTS VITS (~300MB, HuggingFace에서 자동 다운로드)
 └─ faster-whisper-large-v3 (3GB)
 
-총: 158GB
+총: ~155GB
 
 ```
 
@@ -572,8 +572,8 @@ Main:
 **모델:**
 
 ```python
-from cosyvoice.cli.cosyvoice import CosyVoice
-cozy = CosyVoice('pretrained_models/CosyVoice-300M')
+from TTS.api import TTS
+tts = TTS(model_name="tts_models/ko/cv/vits").to("cuda")
 
 ```
 
