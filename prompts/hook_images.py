@@ -99,6 +99,12 @@ HOOK_IMAGES_PROMPT = """
 【예시 프롬프트】
 "50-year-old Korean woman in living room at night, holding envelope with trembling hands, anxious worried expression, dramatic indoor lighting casting shadows, Korean apartment interior with traditional furniture, tense atmosphere before revelation, close-up emotional shot, high quality, realistic, cinematic, Korean drama aesthetic, detailed facial expression"
 
+【중요】
+- 무조건 **하나의 JSON**만 출력하세요.
+- JSON 이외의 어떤 텍스트도 출력하지 마세요.
+- 코드블록(```)도 금지입니다.
+- JSON만 단독으로 출력하세요.
+
 지금 바로 JSON을 생성하세요.
 """
 

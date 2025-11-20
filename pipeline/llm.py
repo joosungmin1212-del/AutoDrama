@@ -168,6 +168,35 @@ class LLMEngine:
 
         return result_text
 
+    def extract_first_json(self, text: str) -> str:
+        """
+        LLM이 JSON을 두 번 출력하는 경우 첫 번째 JSON만 추출
+
+        Args:
+            text: JSON이 포함된 텍스트
+
+        Returns:
+            첫 번째 JSON 문자열
+
+        Raises:
+            ValueError: JSON을 찾을 수 없거나 형식이 잘못된 경우
+        """
+        start = text.find("{")
+        if start == -1:
+            raise ValueError("JSON start '{' not found")
+
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    # JSON 닫힘
+                    return text[start:i+1]
+
+        raise ValueError("JSON not properly closed")
+
     def call_llm(self, prompt: str, phase: str) -> Dict[str, Any]:
         """
         LLM 호출 (기존 인터페이스 유지)
@@ -213,12 +242,19 @@ class LLMEngine:
             else:
                 json_text = response_text.strip()
 
+            # 첫 번째 JSON만 추출 (LLM이 JSON을 두 번 출력하는 경우 대비)
+            json_text = self.extract_first_json(json_text)
+
             result = json.loads(json_text)
             print(f"✓ [{phase}] JSON parsed successfully!")
             return result
 
         except json.JSONDecodeError as e:
             print(f"✗ [{phase}] JSON parsing failed: {e}")
+            print(f"Raw text:\n{response_text}")
+            raise
+        except ValueError as e:
+            print(f"✗ [{phase}] JSON extraction failed: {e}")
             print(f"Raw text:\n{response_text}")
             raise
 
