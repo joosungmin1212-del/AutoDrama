@@ -22,7 +22,6 @@ class LLMEngine:
             quantization="awq",
             enforce_eager=False,
             enable_chunked_prefill=True,
-            use_cuda_graph=True,
             attention_backend="FLASHINFER",
             gpu_memory_utilization=0.92
         )
