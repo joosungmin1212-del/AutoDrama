@@ -1,48 +1,37 @@
 #!/bin/bash
 set -e
 
-echo "=== AutoDrama 안정판 설치 시작 ==="
+echo "=== AutoDrama Full Install (Qwen2.5-32B-AWQ Edition) ==="
 
 apt-get update
 
-# -----------------------
-# 1) LLM (vLLM + Qwen)
-# -----------------------
-echo "[1] LLM 환경 설치..."
+echo "[1] 기본 패키지 설치..."
+pip install pyyaml ffmpeg-python huggingface_hub hf_transfer --break-system-packages
 
-pip install vllm==0.6.6.post1 --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
+echo "[2] PyTorch 2.5.1 설치..."
 pip install torch==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
-pip install huggingface_hub hf_transfer pyyaml --break-system-packages
 
-# -----------------------
-# 2) CosyVoice ONNX
-# -----------------------
-echo "[2] CosyVoice ONNX 설치..."
+echo "[3] vLLM 0.6.6 설치..."
+pip install vllm==0.6.6.post1 --break-system-packages
 
-cd /workspace
-rm -rf CosyVoice
-git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git
-cd CosyVoice
+echo "[4] torchaudio 설치..."
+pip install torchaudio==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
 
-pip install onnxruntime soundfile jieba numpy==1.26.4 --break-system-packages
-grep -v -E 'torch|deepspeed|lightning|diffusers|conformer' requirements.txt > req_onnx.txt
-pip install -r req_onnx.txt --break-system-packages || true
+echo "[5] faster-whisper 설치..."
+pip install faster-whisper==0.10.0 --break-system-packages
 
-# -----------------------
-# 3) AutoDrama 프로젝트
-# -----------------------
-echo "[3] AutoDrama Clone..."
+echo "[6] XTTS 설치..."
+pip install TTS==0.22.0 --break-system-packages
 
-cd /workspace
-rm -rf AutoDrama
-git clone https://github.com/joosungmin1212-del/AutoDrama.git
+echo "[7] CosyVoice 제거..."
+rm -rf /workspace/CosyVoice || true
 
-# -----------------------
-# 4) 캐시 폴더 + 모델 다운로드
-# -----------------------
+echo "[8] 모델 캐시 폴더 생성..."
 mkdir -p /workspace/huggingface_cache
 
-echo "[4] Qwen 32B AWQ 다운로드..."
-hf download Qwen/Qwen2.5-32B-Instruct-AWQ --cache-dir /workspace/huggingface_cache
+echo "[9] Qwen2.5-32B-AWQ 사전 다운로드..."
+huggingface-cli download Qwen/Qwen2.5-32B-Instruct-AWQ \
+  --local-dir /workspace/huggingface_cache/Qwen2.5-32B-AWQ \
+  --local-dir-use-symlinks False
 
-echo "=== 설치 완료! ==="
+echo "=== 설치 완료 ==="
