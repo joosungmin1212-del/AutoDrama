@@ -22,7 +22,7 @@ class LLMEngine:
             quantization="awq",
             enforce_eager=False,
             enable_chunked_prefill=True,
-            attention_backend="FLASHINFER",
+            attention_backend="FLASHINFER",  # 다시 추가
             gpu_memory_utilization=0.92
         )
 
