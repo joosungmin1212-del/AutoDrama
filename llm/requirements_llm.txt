@@ -1,0 +1,5 @@
+vllm==0.6.6.post1
+torch==2.5.1
+huggingface_hub
+hf_transfer
+pyyaml
