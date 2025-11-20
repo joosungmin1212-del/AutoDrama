@@ -69,7 +69,6 @@ class LLMEngine:
             max_model_len=max_model_len,
             enforce_eager=False,
             enable_chunked_prefill=True,
-            attention_backend="FLASHINFER",
             gpu_memory_utilization=gpu_memory_utilization,
             trust_remote_code=True
         )
