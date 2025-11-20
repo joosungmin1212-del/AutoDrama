@@ -1,49 +1,84 @@
 #!/bin/bash
 set -e
 
-echo "=== AutoDrama Full Install (Qwen2.5-32B-AWQ Edition) ==="
+echo "=== AutoDrama Full Install (Qwen2.5-32B-AWQ + 충돌 제로 Edition) ==="
 
 apt-get update
 
-echo "[1] 기본 패키지 설치..."
-pip install pyyaml ffmpeg-python huggingface_hub hf_transfer --break-system-packages
+# ============================================
+# 1) Core Python Packages (충돌 방지 버전 고정)
+# ============================================
+echo "[1] Core 패키지 설치 (버전 고정)..."
+pip install --break-system-packages \
+  "numpy>=1.26.0,<2.0.0" \
+  "pyyaml>=6.0" \
+  "ffmpeg-python>=0.2.0"
 
-echo "[2] PyTorch 2.5.1 설치..."
-pip install torch==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
+# ============================================
+# 2) HuggingFace 생태계 (버전 제한)
+# ============================================
+echo "[2] HuggingFace 생태계 설치..."
+pip install --break-system-packages \
+  "huggingface-hub>=0.23.0,<0.30.0" \
+  "hf-transfer>=0.1.0" \
+  "transformers==4.45.2" \
+  "tokenizers==0.20.3"
 
-echo "[3] vLLM 0.6.6 설치..."
-pip install vllm==0.6.6.post1 --break-system-packages
+# ============================================
+# 3) PyTorch 2.5.1 + cu124 (vLLM 호환)
+# ============================================
+echo "[3] PyTorch 2.5.1 + cu124 설치..."
+pip install --break-system-packages \
+  torch==2.5.1 \
+  torchaudio==2.5.1 \
+  --extra-index-url https://download.pytorch.org/whl/cu124
 
-echo "[4] torchaudio 설치..."
-pip install torchaudio==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
+# ============================================
+# 4) vLLM 0.6.6.post1 (Qwen2.5-32B-AWQ용)
+# ============================================
+echo "[4] vLLM 0.6.6.post1 설치..."
+pip install --break-system-packages "vllm==0.6.6.post1"
 
-echo "[5-0] PyAV / faster-whisper 빌드를 위한 시스템 패키지 설치..."
-apt-get install -y \
-  pkg-config \
-  ffmpeg \
-  libavformat-dev \
-  libavdevice-dev \
-  libavfilter-dev \
-  libavcodec-dev \
-  libavutil-dev \
-  libswscale-dev \
-  libswresample-dev
+# ============================================
+# 5) Whisper-CTranslate2 (자막 생성)
+# ============================================
+echo "[5] whisper-ctranslate2 설치 (faster-whisper 대체)..."
+pip install --break-system-packages "whisper-ctranslate2>=0.4.3"
 
-echo "[5] faster-whisper 설치..."
-pip install faster-whisper==0.10.0 --break-system-packages
-
+# ============================================
+# 6) XTTS (TTS)
+# ============================================
 echo "[6] XTTS 설치..."
-pip install TTS==0.22.0 --break-system-packages
+pip install --break-system-packages "TTS>=0.22.0"
 
-echo "[7] CosyVoice 제거..."
+# ============================================
+# 7) 불필요한 패키지 제거
+# ============================================
+echo "[7] 충돌 패키지 제거..."
+pip uninstall -y faster-whisper 2>/dev/null || true
 rm -rf /workspace/CosyVoice || true
 
+# ============================================
+# 8) 모델 캐시 폴더 생성
+# ============================================
 echo "[8] 모델 캐시 폴더 생성..."
 mkdir -p /workspace/huggingface_cache
 
-echo "[9] Qwen2.5-32B-AWQ 사전 다운로드..."
+# ============================================
+# 9) Qwen2.5-32B-AWQ 사전 다운로드
+# ============================================
+echo "[9] Qwen2.5-32B-AWQ 다운로드..."
 huggingface-cli download Qwen/Qwen2.5-32B-Instruct-AWQ \
   --local-dir /workspace/huggingface_cache/Qwen2.5-32B-AWQ \
   --local-dir-use-symlinks False
 
-echo "=== 설치 완료 ==="
+# ============================================
+# 10) 버전 확인
+# ============================================
+echo ""
+echo "=== 설치된 패키지 버전 확인 ==="
+pip show vllm torch transformers tokenizers numpy huggingface-hub whisper-ctranslate2 TTS | grep -E "Name|Version"
+
+echo ""
+echo "=== 설치 완료! ==="
+echo "충돌 없는 환경이 구성되었습니다."

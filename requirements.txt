@@ -1,4 +1,18 @@
-pyyaml
-ffmpeg-python
-huggingface_hub
-hf_transfer
+# Core dependencies - 충돌 방지를 위한 버전 고정
+pyyaml>=6.0
+ffmpeg-python>=0.2.0
+
+# HuggingFace 생태계 - 버전 범위 제한
+huggingface-hub>=0.23.0,<0.30.0
+hf-transfer>=0.1.0
+transformers==4.45.2
+tokenizers==0.20.3
+
+# Numpy - vLLM 호환성
+numpy>=1.26.0,<2.0.0
+
+# 자막 생성 - whisper-ctranslate2 (faster-whisper 대체)
+whisper-ctranslate2>=0.4.3
+
+# TTS - XTTS
+TTS>=0.22.0
