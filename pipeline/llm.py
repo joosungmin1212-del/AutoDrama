@@ -37,7 +37,8 @@ class LLMEngine:
         
         sampling_params = SamplingParams(
             temperature=params['temperature'],
-            max_tokens=params['max_tokens']
+            max_tokens=params['max_tokens'],
+            stop=["\n以上", "\nThis", "}\n이"]
         )
         
         outputs = self.llm.generate([prompt], sampling_params)
