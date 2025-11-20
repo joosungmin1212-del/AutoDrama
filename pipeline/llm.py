@@ -216,7 +216,7 @@ class LLMEngine:
         else:
             params = self.config['llm']['parts']
 
-        # 생성
+        # ----- 1. raw 생성 -----
         response_text = self.generate_text(
             prompt=prompt,
             max_tokens=params['max_tokens'],
@@ -228,34 +228,28 @@ class LLMEngine:
         print(response_text[:500])
         print(f"[{phase}] Total length: {len(response_text)} chars")
 
-        # JSON 파싱
         try:
-            # Code block 제거
-            if "```json" in response_text:
-                json_start = response_text.find("```json") + 7
-                json_end = response_text.find("```", json_start)
-                json_text = response_text[json_start:json_end].strip()
-            elif "```" in response_text:
-                json_start = response_text.find("```") + 3
-                json_end = response_text.find("```", json_start)
-                json_text = response_text[json_start:json_end].strip()
-            else:
-                json_text = response_text.strip()
+            # ----- 2. 먼저 전체에서 첫 JSON만 추출 -----
+            # (코드블록 여부 상관 없이 가장 첫 JSON부터 끝 JSON까지 잘라냄)
+            json_candidate = self.extract_first_json(response_text)
 
-            # 첫 번째 JSON만 추출 (LLM이 JSON을 두 번 출력하는 경우 대비)
-            json_text = self.extract_first_json(json_text)
+            # ----- 3. code block 내부인 경우를 대비한 보정 -----
+            # (혹시 JSON이 code block 안에 있으면 안쪽만 다시 추출)
+            if "```" in json_candidate:
+                # code block inside first JSON? → extract again
+                cleaned = json_candidate.replace("```json", "").replace("```", "").strip()
+                json_candidate = self.extract_first_json(cleaned)
 
-            result = json.loads(json_text)
+            # ----- 4. json loads -----
+            result = json.loads(json_candidate)
             print(f"✓ [{phase}] JSON parsed successfully!")
             return result
 
-        except json.JSONDecodeError as e:
+        except Exception as e:
             print(f"✗ [{phase}] JSON parsing failed: {e}")
-            print(f"Raw text:\n{response_text}")
-            raise
-        except ValueError as e:
-            print(f"✗ [{phase}] JSON extraction failed: {e}")
-            print(f"Raw text:\n{response_text}")
+            print("----- RAW TEXT -----")
+            print(response_text)
+            print("--------------------")
             raise
 
     def call_llm_text(self, prompt: str, phase: str) -> str:
