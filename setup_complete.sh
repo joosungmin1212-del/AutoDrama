@@ -5,10 +5,10 @@ echo "=== AutoDrama 완전 설치 시작 ==="
 
 apt-get update
 
-echo "[1] vLLM 0.6.7 설치..."
-pip install "vllm==0.6.7" --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
+echo "[1] vLLM 0.6.6.post1 설치..."
+pip install "vllm==0.6.6.post1" --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
 
-echo "[2] torch & torchaudio 설치..."
+echo "[2] torch & torchaudio 2.5.1 설치..."
 pip install torch==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
 pip install torchaudio==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu124 --break-system-packages
 
