@@ -1,7 +1,24 @@
 """
 Phase 1: Outline 생성 프롬프트 (V2 Final)
-72B 모델 최적화 + ChatGPT 검증 반영 버전
+72B 모델 최적화 + ChatGPT 검증 반영 버전 + 안정화 로직 강화
 """
+
+# 시니어 드라마 금지 목록 (전역 상수)
+FORBIDDEN_ELEMENTS = [
+    "SF/판타지 모든 요소",
+    "폭력적 장면",
+    "자극적 요소",
+    "복잡한 의학 전문용어",
+    "복잡한 법률 전문용어",
+    "동일 대사 2회 이상 반복",
+    "동일 문장 구조 3회 이상 반복",
+    "갑작스러운 성격 변화",
+    "동기 없는 행동",
+    "설명식 대사",
+    "영어 단어 남발",
+    "최신 인터넷 용어",
+    "중국어 단어 사용"
+]
 
 OUTLINE_PROMPT_V2_FINAL = """
 당신은 50~80대 한국 여성을 위한 유튜브 오디오 드라마 총괄 기획자입니다.
@@ -65,55 +82,54 @@ OUTLINE_PROMPT_V2_FINAL = """
 {{
   "meta": {{
     "title": "{title}",
-    "genre": "가족드라마|복수극|치유드라마|사이다극 중 택1",
-    "tone": "따뜻함|긴장감|슬픔|통쾌함|혼합(따뜻함+긴장감)",
-    "target_emotion": "감동|카타르시스|위로|희망",
+    "genre": "가족드라마",
+    "tone": "따뜻함",
+    "target_emotion": "감동",
     "audience_age": "50-80",
     "duration_minutes": 120,
     "part_count": 4
   }},
 
   "consistency_anchors": [
-    "캐릭터의 핵심 목표는 끝까지 동일해야 합니다 (예: 유진은 과거와 화해하고 싶음)",
-    "상징적 오브젝트의 의미는 일관되어야 합니다 (예: 반지는 과거의 집착)",
-    "감정선의 방향은 고정됩니다 (예: 집착 → 깨달음 → 화해)",
+    "캐릭터의 핵심 목표는 끝까지 동일해야 합니다",
+    "상징적 오브젝트의 의미는 일관되어야 합니다",
+    "감정선의 방향은 고정됩니다",
     "장르와 톤은 전 파트에서 동일합니다"
   ],
 
   "global_conflict_arc": {{
-    "start": "미묘한 불안감 (평온한 일상의 균열)",
-    "rise": "가족과의 충돌 (과거 vs 현재)",
-    "peak": "진실 대면 (핵심 깨달음의 순간)",
-    "fall": "화해 과정 (관계 회복)",
-    "end": "새로운 평온 (성장한 상태)"
+    "start": "미묘한 불안감",
+    "rise": "가족과의 충돌",
+    "peak": "진실 대면",
+    "fall": "화해 과정",
+    "end": "새로운 평온"
   }},
 
   "emotional_anchors": [
-    "Part 1: 그리움 (과거에 대한 향수)",
-    "Part 2: 혼란 (갈등과 선택의 압박)",
-    "Part 3: 절정 (깨달음과 결단)",
-    "Part 4: 평온 (화해와 새로운 시작)"
+    "Part 1: 그리움",
+    "Part 2: 혼란",
+    "Part 3: 절정",
+    "Part 4: 평온"
   ],
 
   "characters": [
     {{
       "id": "char_001",
-      "name": "이름 (50~80대가 친숙한 이름)",
+      "name": "주인공이름",
       "age": 65,
-      "role": "주인공|조력자|갈등자|관찰자",
-      "archetype": "과거에 얽매인 여성|억울함을 품은 노인|화해를 원하는 어머니 등",
-      "core_trait": "고집스럽지만 따뜻한|조용하지만 강인한 등 (2-3가지 특성)",
-      "voice_type": "elderly_female|mature_female|young_female|male",
+      "role": "주인공",
+      "archetype": "과거에 얽매인 여성",
+      "core_trait": "고집스럽지만 따뜻한",
+      "voice_type": "elderly_female",
       "emotional_arc": {{
-        "start": "초기 감정 상태 (외로움/분노/그리움)",
-        "journey": "감정 여정 (집착 → 깨달음 → 화해)",
-        "end": "최종 감정 상태 (평온/용서/희망)"
+        "start": "외로움",
+        "journey": "집착에서 깨달음으로",
+        "end": "평온"
       }},
       "relationships": {{
-        "캐릭터B 이름": "관계 설명 (손녀, 현실을 깨우쳐주는 존재)",
-        "캐릭터C 이름": "관계 설명 (첫사랑, 과거의 상징)"
+        "손녀": "현실을 깨우쳐주는 존재"
       }},
-      "key_motivation": "이 인물이 원하는 것 (구체적으로, 전 파트 동일)"
+      "key_motivation": "과거와 화해하고 싶음"
     }}
   ],
 
@@ -121,63 +137,55 @@ OUTLINE_PROMPT_V2_FINAL = """
     "act1_setup": {{
       "time_range_minutes": [0, 15],
       "key_events": [
-        "사건 1: 반지 발견 (구체적 상황 묘사)",
-        "사건 2: 가족 반응",
-        "사건 3: 첫 갈등 시작"
+        "사건 1",
+        "사건 2",
+        "사건 3"
       ],
-      "emotional_shift": "평온 → 동요",
-      "information_revealed": "반지의 존재, 과거 암시",
-      "ending_hook": "Part 1 끝에서 제기될 질문"
+      "emotional_shift": "평온에서 동요로",
+      "information_revealed": "반지의 존재",
+      "ending_hook": "Part 1 끝 질문"
     }},
 
     "act2_conflict": {{
       "time_range_minutes": [15, 60],
       "key_events": [
-        "갈등 심화 사건들",
-        "과거 회상 장면",
-        "가족 간 의견 충돌"
+        "갈등 심화 사건들"
       ],
-      "emotional_shift": "동요 → 갈등 → 고통",
-      "information_revealed": "과거 사랑 이야기, 숨겨진 사실 일부",
-      "escalation": "갈등 강화 요소 (시간 압박/선택 강요 등)"
+      "emotional_shift": "동요에서 갈등으로",
+      "information_revealed": "과거 사랑 이야기",
+      "escalation": "시간 압박"
     }},
 
     "act3_midpoint": {{
       "time_range_minutes": [60, 90],
-      "turning_point": "결정적 전환 사건 (진실 발견/충격적 만남 등)",
+      "turning_point": "결정적 전환 사건",
       "key_events": [
-        "전환점 사건",
-        "캐릭터 선택의 순간",
-        "새로운 정보 공개"
+        "전환점 사건"
       ],
-      "emotional_shift": "고통 → 깨달음 시작",
+      "emotional_shift": "고통에서 깨달음으로",
       "information_revealed": "핵심 진실 50% 공개"
     }},
 
     "act4_climax": {{
       "time_range_minutes": [90, 105],
-      "climax_event": "가장 극적인 순간 (구체적 장면 묘사)",
+      "climax_event": "가장 극적인 순간",
       "key_events": [
-        "진실 완전 폭로",
-        "캐릭터 최종 선택",
-        "감정 폭발 장면"
+        "진실 완전 폭로"
       ],
-      "emotional_shift": "깨달음 → 결단 → 절정",
+      "emotional_shift": "깨달음에서 절정으로",
       "peak_intensity": 9,
-      "dramatic_question": "최종적으로 던지는 질문"
+      "dramatic_question": "최종 질문"
     }},
 
     "act5_resolution": {{
       "time_range_minutes": [105, 120],
       "key_events": [
-        "갈등 해소 과정",
-        "캐릭터 변화 확인",
-        "새로운 균형 도달"
+        "갈등 해소 과정"
       ],
-      "emotional_shift": "절정 → 해소 → 평온",
-      "information_revealed": "마지막 여운, 상징적 의미",
-      "final_message": "드라마가 전달하는 메시지",
-      "closure_level": "완전 해결|열린 결말|희망적 암시"
+      "emotional_shift": "절정에서 평온으로",
+      "information_revealed": "마지막 여운",
+      "final_message": "드라마 메시지",
+      "closure_level": "완전 해결"
     }}
   }},
 
@@ -185,264 +193,160 @@ OUTLINE_PROMPT_V2_FINAL = """
     {{
       "scene_id": "sc_001",
       "part": 1,
-      "title": "장면 제목 (예: 반지의 발견)",
-      "location": "세탁실|거실|병원 등",
-      "time": "비 오는 밤|이른 아침|황혼 무렵",
-      "participants": ["유진", "하영"],
-      "core_action": "무엇이 일어나는가 (100자)",
-      "emotional_peak": "놀라움 → 그리움",
-      "dialogue_highlight": "이 장면의 핵심 대사 1개 (15자 이내)",
+      "title": "장면 제목",
+      "location": "거실",
+      "time": "비 오는 밤",
+      "participants": ["주인공", "손녀"],
+      "core_action": "무엇이 일어나는가",
+      "emotional_peak": "놀라움",
+      "dialogue_highlight": "핵심 대사",
       "sensory_essentials": {{
-        "sound": "빗소리, 세탁기 돌아가는 소리",
-        "touch": "차가운 금속 촉감",
+        "sound": "빗소리",
+        "touch": "차가운 금속",
         "sight": "낡았지만 빛나는 금빛"
       }},
-      "thematic_significance": "과거의 재등장, 선택의 시작",
+      "thematic_significance": "과거의 재등장",
       "image_worthy": true
     }}
   ],
 
   "thematic_threads": {{
-    "main_theme": "과거와 현재의 화해|가족의 의미|용서와 치유 중 택1",
+    "main_theme": "과거와 현재의 화해",
     "sub_themes": [
       "추억의 가치와 한계",
-      "세대 간 이해",
-      "선택의 무게"
+      "세대 간 이해"
     ],
     "symbolic_objects": {{
       "반지": "과거에 대한 집착",
-      "세탁기": "정화, 새로운 시작",
-      "빗소리": "슬픔과 정화"
+      "세탁기": "정화"
     }},
     "motifs": [
       "반복되는 이미지: 비",
-      "반복되는 행동: 반지 쓰다듬기",
-      "반복되는 대사: '그때도 비가 왔어요'"
+      "반복되는 행동: 반지 쓰다듬기"
     ],
-    "thematic_progression": "집착(Part 1) → 갈등(Part 2) → 깨달음(Part 3) → 해방(Part 4)"
+    "thematic_progression": "집착에서 해방으로"
   }},
 
   "narrative_rules": {{
     "pov": "전지적 3인칭 단일 내레이터",
-    "time_structure": "현재 중심, 과거 회상 삽입 (회상 비율 20% 이내)",
+    "time_structure": "현재 중심",
     "pacing": {{
-      "slow_moments": "감정 묘사, 회상 장면",
-      "fast_moments": "갈등 폭발, 진실 발견"
+      "slow_moments": "감정 묘사",
+      "fast_moments": "갈등 폭발"
     }},
-    "dialogue_ratio": "전체의 5-10% (나레이션 90-95%)",
-    "tone_consistency": "따뜻하지만 진지함, 과도한 유머 금지",
+    "dialogue_ratio": "5-10%",
+    "tone_consistency": "따뜻하지만 진지함",
 
-    "core_forbidden": [
-      "SF/판타지 요소",
-      "폭력적 장면",
-      "복잡한 전문용어",
-      "동일 대사 2회 이상 반복",
-      "갑작스러운 성격 변화",
-      "동기 없는 행동",
-      "설명식 대사",
-      "영어 단어 남발",
-      "최신 인터넷 용어"
-    ],
+    "core_forbidden": {forbidden_elements_json},
 
     "required_elements": [
-      "신체 반응으로 감정 표현 (눈물/주먹/숨)",
-      "감각적 디테일 (소리/촉감/시각)",
+      "신체 반응으로 감정 표현",
+      "감각적 디테일",
       "시간/장소 변화 시 명확한 신호",
-      "50-80대 친숙한 어휘",
-      "~습니다/~어요 자연스러운 혼용"
+      "50-80대 친숙한 어휘"
     ],
 
     "style_guide": {{
-      "sentence_length": "평균 30-50자, 최대 80자",
-      "paragraph_length": "150-300자 단위로 호흡",
-      "chapter_transitions": "며칠 후|그날 밤|한편 그 시각",
-      "flashback_markers": "30년 전|그때도|그날의 기억"
+      "sentence_length": "평균 30-50자",
+      "paragraph_length": "150-300자",
+      "chapter_transitions": "며칠 후",
+      "flashback_markers": "30년 전"
     }}
   }},
 
   "part_breakdown": [
     {{
       "part": 1,
-      "title": "발견 (Discovery)",
+      "title": "발견",
       "time_range_minutes": [0, 30],
       "word_count_range": [12000, 13000],
 
-      "primary_goal": "상황 제시, 인물 소개, 갈등 씨앗",
+      "primary_goal": "상황 제시",
       "conflict_intensity": 3,
 
       "must_include": [
-        "반지 발견 장면 (구체적 묘사)",
-        "주요 인물 3-4명 등장",
-        "과거 암시 (회상 장면 1-2개)",
-        "가족들의 첫 반응"
+        "주요 인물 등장",
+        "사건 발생"
       ],
 
       "must_avoid": [
-        "너무 빠른 전개",
-        "과도한 설명",
-        "캐릭터 과다 등장 (4명 이내)"
+        "너무 빠른 전개"
       ],
 
       "must_resolve": [
-        "반지 발견 사실 확인",
-        "가족들에게 알림"
+        "사건 확인"
       ],
 
       "open_threads": [
-        "반지의 처리 방법 미정",
-        "영호에 대한 미완성 회상",
-        "가족 갈등 시작"
+        "미해결 문제 1"
       ],
 
-      "ending_hook": "가족들의 우려 시작, '이 반지 어떻게 할 거예요?'",
+      "ending_hook": "다음 Part 기대감",
 
       "key_revelations": [
-        "반지의 존재",
-        "영호라는 이름",
-        "유진의 과거 사랑 암시"
+        "핵심 정보 1"
       ],
 
       "bridge_to_next": {{
-        "connector_dialogue": "하영의 질문: '할머니, 그 반지 어떻게 할 거예요?'",
-        "carry_over_summary": "반지의 의미, 가족의 우려, 유진의 동요가 Part 2로 이어집니다."
+        "connector_dialogue": "연결 대사",
+        "carry_over_summary": "Part 2로 이어질 요소"
       }}
     }},
 
     {{
       "part": 2,
-      "title": "갈등 (Conflict)",
+      "title": "갈등",
       "time_range_minutes": [30, 60],
       "word_count_range": [12000, 13000],
-
-      "primary_goal": "갈등 심화, 과거 공개, 선택 압박",
+      "primary_goal": "갈등 심화",
       "conflict_intensity": 6,
-
-      "must_include": [
-        "가족과의 본격 충돌",
-        "과거 회상 확대 (영호와의 추억)",
-        "유진의 내적 갈등 심화",
-        "시간 압박 요소 도입"
-      ],
-
-      "must_avoid": [
-        "동일 대화 반복",
-        "정체된 스토리",
-        "캐릭터 동기 불명확"
-      ],
-
-      "must_resolve": [
-        "가족과의 첫 충돌 결과",
-        "과거 회상 일부 완결"
-      ],
-
-      "open_threads": [
-        "영호의 진짜 이야기",
-        "유진의 선택",
-        "가족 관계 악화"
-      ],
-
-      "ending_hook": "진실의 단서 발견, '이럴 수가...'",
-
-      "key_revelations": [
-        "영호와의 과거 상세",
-        "반지의 의미",
-        "숨겨진 사실 암시"
-      ],
-
+      "must_include": ["가족과의 충돌"],
+      "must_avoid": ["동일 대화 반복"],
+      "must_resolve": ["첫 충돌 결과"],
+      "open_threads": ["진짜 이야기"],
+      "ending_hook": "진실의 단서",
+      "key_revelations": ["과거 상세"],
       "bridge_to_next": {{
-        "connector_dialogue": "유진의 독백: '이제 진실을 알아야 해...'",
-        "carry_over_summary": "진실 단서, 유진의 혼란, 가족 긴장이 Part 3의 폭발로 이어집니다."
+        "connector_dialogue": "연결 대사",
+        "carry_over_summary": "Part 3으로 이어질 요소"
       }}
     }},
 
     {{
       "part": 3,
-      "title": "절정 (Climax)",
+      "title": "절정",
       "time_range_minutes": [60, 105],
       "word_count_range": [12000, 13000],
-
-      "primary_goal": "진실 폭로, 클라이맥스, 결단",
+      "primary_goal": "진실 폭로",
       "conflict_intensity": 9,
-
-      "must_include": [
-        "핵심 진실 완전 공개",
-        "감정 폭발 장면",
-        "유진의 최종 선택 순간",
-        "상징적 장면 (반지 처리 등)"
-      ],
-
-      "must_avoid": [
-        "성급한 해결",
-        "설명식 진실 폭로",
-        "감정 과잉"
-      ],
-
-      "must_resolve": [
-        "영호의 진실 전부",
-        "유진의 최종 선택"
-      ],
-
-      "open_threads": [
-        "선택의 결과",
-        "가족 화해 가능성",
-        "새로운 시작"
-      ],
-
-      "ending_hook": "선택 후 여운, '이제 괜찮을까요?'",
-
-      "key_revelations": [
-        "영호의 진실 전부",
-        "유진의 진짜 바람",
-        "가족의 진심"
-      ],
-
+      "must_include": ["핵심 진실 공개"],
+      "must_avoid": ["성급한 해결"],
+      "must_resolve": ["진실 전부"],
+      "open_threads": ["선택의 결과"],
+      "ending_hook": "선택 후 여운",
+      "key_revelations": ["진실 전부"],
       "bridge_to_next": {{
-        "connector_dialogue": "유진의 결단: '이제 내려놓을게요.'",
-        "carry_over_summary": "선택의 여파, 관계 변화, 새로운 균형이 Part 4에서 완결됩니다."
+        "connector_dialogue": "연결 대사",
+        "carry_over_summary": "Part 4로 이어질 요소"
       }}
     }},
 
     {{
       "part": 4,
-      "title": "해소 (Resolution)",
+      "title": "해소",
       "time_range_minutes": [105, 120],
       "word_count_range": [11500, 12500],
-
-      "primary_goal": "갈등 해소, 화해, 새로운 시작",
+      "primary_goal": "갈등 해소",
       "conflict_intensity": 4,
-
-      "must_include": [
-        "가족과의 화해 장면",
-        "유진의 변화 확인",
-        "상징적 마무리 (반지 보관/처리)",
-        "따뜻한 여운"
-      ],
-
-      "must_avoid": [
-        "설교조 마무리",
-        "과도한 해피엔딩",
-        "미완성 감정선"
-      ],
-
-      "must_resolve": [
-        "모든 갈등",
-        "모든 캐릭터의 감정 정리",
-        "테마의 완결"
-      ],
-
+      "must_include": ["화해 장면"],
+      "must_avoid": ["설교조 마무리"],
+      "must_resolve": ["모든 갈등"],
       "open_threads": [],
-
       "ending_note": "구독 유도 멘트는 자동 추가되므로 작성 금지",
-
       "final_message": "과거를 존중하되 현재를 살아가는 것의 의미",
-
-      "key_revelations": [
-        "상징의 최종 의미",
-        "캐릭터의 성장 확인"
-      ],
-
+      "key_revelations": ["상징의 최종 의미"],
       "bridge_to_next": {{
-        "connector_dialogue": "없음 (마지막 파트)",
+        "connector_dialogue": "없음",
         "carry_over_summary": "완결"
       }}
     }}
@@ -511,4 +415,203 @@ def generate_outline_prompt(title: str) -> str:
     Returns:
         str: 완성된 프롬프트
     """
-    return OUTLINE_PROMPT_V2_FINAL.format(title=title)
+    import json
+
+    # 금지 요소를 JSON 배열로 변환
+    forbidden_json = json.dumps(FORBIDDEN_ELEMENTS, ensure_ascii=False)
+
+    return OUTLINE_PROMPT_V2_FINAL.format(
+        title=title,
+        forbidden_elements_json=forbidden_json
+    )
+
+
+def validate_outline(outline_data: dict) -> dict:
+    """
+    Outline JSON을 검증하고 누락된 필드를 자동으로 보충합니다.
+
+    Args:
+        outline_data (dict): Outline JSON 데이터
+
+    Returns:
+        dict: 검증 및 보정된 Outline JSON
+
+    Raises:
+        ValueError: 필수 필드가 심각하게 누락된 경우
+    """
+    import copy
+
+    # 깊은 복사로 원본 보존
+    validated = copy.deepcopy(outline_data)
+
+    # 1. meta 검증
+    if "meta" not in validated or not validated["meta"]:
+        validated["meta"] = {}
+
+    meta_defaults = {
+        "title": "제목 없음",
+        "genre": "가족드라마",
+        "tone": "따뜻함",
+        "target_emotion": "감동",
+        "audience_age": "50-80",
+        "duration_minutes": 120,
+        "part_count": 4
+    }
+
+    for key, default_value in meta_defaults.items():
+        if key not in validated["meta"] or not validated["meta"][key]:
+            validated["meta"][key] = default_value
+
+    # 2. consistency_anchors 검증 (4개 필수)
+    if "consistency_anchors" not in validated or not validated["consistency_anchors"]:
+        validated["consistency_anchors"] = [
+            "캐릭터의 핵심 목표는 끝까지 동일해야 합니다",
+            "상징적 오브젝트의 의미는 일관되어야 합니다",
+            "감정선의 방향은 고정됩니다",
+            "장르와 톤은 전 파트에서 동일합니다"
+        ]
+    elif len(validated["consistency_anchors"]) < 4:
+        while len(validated["consistency_anchors"]) < 4:
+            validated["consistency_anchors"].append("일관성 유지")
+
+    # 3. global_conflict_arc 검증
+    if "global_conflict_arc" not in validated or not validated["global_conflict_arc"]:
+        validated["global_conflict_arc"] = {}
+
+    arc_defaults = {
+        "start": "평온한 일상",
+        "rise": "갈등 시작",
+        "peak": "진실 대면",
+        "fall": "화해 과정",
+        "end": "새로운 평온"
+    }
+
+    for key, default_value in arc_defaults.items():
+        if key not in validated["global_conflict_arc"] or not validated["global_conflict_arc"][key]:
+            validated["global_conflict_arc"][key] = default_value
+
+    # 4. emotional_anchors 검증 (4개 필수)
+    if "emotional_anchors" not in validated or not validated["emotional_anchors"]:
+        validated["emotional_anchors"] = [
+            "Part 1: 그리움",
+            "Part 2: 혼란",
+            "Part 3: 절정",
+            "Part 4: 평온"
+        ]
+    elif len(validated["emotional_anchors"]) < 4:
+        defaults = ["Part 1: 그리움", "Part 2: 혼란", "Part 3: 절정", "Part 4: 평온"]
+        while len(validated["emotional_anchors"]) < 4:
+            idx = len(validated["emotional_anchors"])
+            validated["emotional_anchors"].append(defaults[idx] if idx < len(defaults) else f"Part {idx+1}: 감정")
+
+    # 5. characters 검증
+    if "characters" not in validated or not validated["characters"]:
+        validated["characters"] = [{
+            "id": "char_001",
+            "name": "주인공",
+            "age": 65,
+            "role": "주인공",
+            "archetype": "일반인",
+            "core_trait": "따뜻한 성격",
+            "voice_type": "elderly_female",
+            "emotional_arc": {
+                "start": "평온",
+                "journey": "변화",
+                "end": "성장"
+            },
+            "relationships": {},
+            "key_motivation": "목표"
+        }]
+
+    # 6. part_breakdown 검증 (4개 필수)
+    if "part_breakdown" not in validated or not validated["part_breakdown"]:
+        validated["part_breakdown"] = []
+
+    while len(validated["part_breakdown"]) < 4:
+        part_num = len(validated["part_breakdown"]) + 1
+        validated["part_breakdown"].append({
+            "part": part_num,
+            "title": f"Part {part_num}",
+            "time_range_minutes": [(part_num-1)*30, part_num*30],
+            "word_count_range": [12000, 13000],
+            "primary_goal": "목표",
+            "conflict_intensity": 5,
+            "must_include": [],
+            "must_avoid": [],
+            "must_resolve": [],
+            "open_threads": [],
+            "ending_hook": "",
+            "key_revelations": [],
+            "bridge_to_next": {
+                "connector_dialogue": "",
+                "carry_over_summary": ""
+            }
+        })
+
+    # 각 part_breakdown 필드 검증
+    for i, part in enumerate(validated["part_breakdown"]):
+        # time_range_minutes, word_count_range를 배열로 강제 변환
+        if "time_range_minutes" not in part or not isinstance(part["time_range_minutes"], list):
+            part["time_range_minutes"] = [i*30, (i+1)*30]
+
+        if "word_count_range" not in part or not isinstance(part["word_count_range"], list):
+            part["word_count_range"] = [12000, 13000]
+
+        # 문자열이 배열에 들어간 경우 숫자로 변환
+        if isinstance(part["time_range_minutes"], list):
+            part["time_range_minutes"] = [
+                int(x) if isinstance(x, str) and x.isdigit() else x
+                for x in part["time_range_minutes"]
+            ]
+
+        if isinstance(part["word_count_range"], list):
+            part["word_count_range"] = [
+                int(x) if isinstance(x, str) and x.isdigit() else x
+                for x in part["word_count_range"]
+            ]
+
+        # 필수 필드 기본값 설정
+        if "must_include" not in part or not part["must_include"]:
+            part["must_include"] = []
+        if "must_avoid" not in part or not part["must_avoid"]:
+            part["must_avoid"] = []
+        if "must_resolve" not in part or not part["must_resolve"]:
+            part["must_resolve"] = []
+        if "open_threads" not in part or not part["open_threads"]:
+            part["open_threads"] = []
+        if "key_revelations" not in part or not part["key_revelations"]:
+            part["key_revelations"] = []
+        if "bridge_to_next" not in part or not part["bridge_to_next"]:
+            part["bridge_to_next"] = {
+                "connector_dialogue": "",
+                "carry_over_summary": ""
+            }
+
+    # 7. outline_full 검증
+    if "outline_full" not in validated or not validated["outline_full"]:
+        validated["outline_full"] = "전체 개요가 생성되지 않았습니다."
+
+    # 8. 기타 필수 필드 검증
+    if "story_spine" not in validated or not validated["story_spine"]:
+        validated["story_spine"] = {}
+
+    if "key_scenes" not in validated or not validated["key_scenes"]:
+        validated["key_scenes"] = []
+
+    if "thematic_threads" not in validated or not validated["thematic_threads"]:
+        validated["thematic_threads"] = {
+            "main_theme": "가족의 의미",
+            "sub_themes": [],
+            "symbolic_objects": {},
+            "motifs": [],
+            "thematic_progression": "변화"
+        }
+
+    if "narrative_rules" not in validated or not validated["narrative_rules"]:
+        validated["narrative_rules"] = {
+            "pov": "전지적 3인칭",
+            "dialogue_ratio": "5-10%",
+            "core_forbidden": FORBIDDEN_ELEMENTS
+        }
+
+    return validated

@@ -95,9 +95,16 @@ def main(title: str) -> None:
 
         outline_prompt = generate_outline_prompt(title)
         outline_data = llm.call_llm(outline_prompt, phase="outline")
+
+        # Outline 검증 및 보정
+        from prompts.outline_v2_final import validate_outline
+        outline_data = validate_outline(outline_data)
+
         save_json(outline_data, f"{dirs['base']}/outline.json")
 
         phase_logger.info(f"Outline generated: {len(outline_data.get('outline_full', ''))} chars")
+        phase_logger.info(f"Characters: {len(outline_data.get('characters', []))}")
+        phase_logger.info(f"Parts: {len(outline_data.get('part_breakdown', []))}")
         phase_logger.end_phase(1, "Outline Generation")
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -148,6 +155,9 @@ def main(title: str) -> None:
         current_context = None
 
         # 순차 생성 (Part 1 → 2 → 3 → 4)
+        from prompts.part_v3 import validate_part_text
+        from utils.context_generator import sanitize_context
+
         for part_num in range(1, 5):
             phase_logger.info(f"Generating Part {part_num}...")
 
@@ -162,6 +172,14 @@ def main(title: str) -> None:
             part_text = llm.call_llm_text(part_prompt, "parts")
             parts_text.append(part_text)
 
+            # Part 검증
+            is_valid, warnings, stats = validate_part_text(part_text, part_num)
+            if warnings:
+                for warning in warnings:
+                    phase_logger.warning(f"Part {part_num}: {warning}")
+
+            phase_logger.info(f"Part {part_num} stats: {stats.get('length', 0)} chars, dialogue {stats.get('dialogue_ratio', 0):.1f}%")
+
             # Part 저장
             save_text(part_text, f"{dirs['main']}/part{part_num}.txt")
             phase_logger.info(f"Part {part_num} completed: {len(part_text)} chars")
@@ -174,6 +192,9 @@ def main(title: str) -> None:
                     part_number=part_num,
                     outline_data=outline_data
                 )
+                # Context 안전화
+                current_context = sanitize_context(current_context)
+
                 # Context 저장 (디버깅용)
                 save_json(current_context, f"{dirs['main']}/part{part_num}_context.json")
                 phase_logger.info(f"Context created: {len(current_context.get('summary', ''))} chars summary")

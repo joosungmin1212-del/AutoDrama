@@ -1,9 +1,13 @@
 """
 Phase 3-6: Part 1-4 생성 프롬프트 V3
-outline_v2_final.json 기반 완전 재설계
+outline_v2_final.json 기반 완전 재설계 + 안정화 로직 강화
 """
 
 from typing import Dict, Any, Optional
+import re
+
+# 금지 요소 (outline과 동일하게 유지)
+from prompts.outline_v2_final import FORBIDDEN_ELEMENTS
 
 PART_PROMPT_V3 = """
 당신은 50~80대 한국 여성을 위한 유튜브 오디오 드라마 대본 작가입니다.
@@ -57,8 +61,8 @@ Part {part_number}: {part_title}
 
 {part_goal}
 
-시간 범위: {time_range_minutes[0]}분 ~ {time_range_minutes[1]}분
-분량 목표: {word_count_range[0]:,}~{word_count_range[1]:,}자
+시간 범위: {time_range_minutes_start}분 ~ {time_range_minutes_end}분
+분량 목표: {word_count_start:,}~{word_count_end:,}자
 갈등 강도: {conflict_intensity}/10
 
 【이 Part에서 반드시 포함할 요소 (Must Include)】
@@ -106,7 +110,7 @@ Part {part_number}: {part_title}
 
 1. 화자
 - 전지적 3인칭 단일 내레이터
-- "그는", "그녀는", "민서는" 사용
+- "그는", "그녀는", "이름은" 사용
 - 절대 "나는", "내가" 금지
 
 2. 대사 최소화 ⭐⭐⭐
@@ -197,6 +201,7 @@ Part {part_number}: {part_title}
 3. 스토리는 반드시 앞으로 진행해야 함
 4. 500자마다 새로운 정보/사건/감정 변화 필수
 5. 중국어 단어 사용 절대 금지
+6. 영어 단어는 최소화 (50-80대가 모르는 단어 금지)
 
 ⚠️ 중국어가 섞이면 즉시 작성 중단하고 다시 시작하세요.
 
@@ -205,10 +210,11 @@ Part {part_number}: {part_title}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 - 순수 텍스트만 출력하세요
-- {word_count_range[0]:,}~{word_count_range[1]:,}자 분량
+- {word_count_start:,}~{word_count_end:,}자 분량
 - JSON 출력 금지
 - 코드블록 금지
 - 설명 금지
+- 중국어 금지
 - 대본 텍스트만 출력
 
 {ending_note}
@@ -246,38 +252,33 @@ def generate_part_v3_prompt(
     context: Optional[Dict[str, Any]] = None
 ) -> str:
     """
-    Part V3 프롬프트를 생성합니다.
+    Part V3 프롬프트를 생성합니다. (안정화 로직 강화)
 
     Args:
         part_number (int): Part 번호 (1-4)
-        outline_data (dict): outline_v2_final.json 데이터
+        outline_data (dict): outline_v2_final.json 데이터 (validate_outline 통과한 것)
         context (dict, optional): 이전 Part의 context (Part 2-4에서 사용)
 
     Returns:
         str: 완성된 프롬프트
-
-    Context 구조:
-        {
-            "summary": "300자 핵심 요약",
-            "character_updates": {},
-            "open_threads": [],
-            "resolved_points": [],
-            "next_must_address": [],
-            "ending_sentence": "마지막 문장"
-        }
     """
-    # Meta 정보
+    # 1. Outline 데이터 안전하게 가져오기 (기본값 설정)
     meta = outline_data.get("meta", {})
-    title = meta.get("title", "")
-    genre = meta.get("genre", "")
-    tone = meta.get("tone", "")
-    target_emotion = meta.get("target_emotion", "")
+    title = meta.get("title", "제목 없음")
+    genre = meta.get("genre", "가족드라마")
+    tone = meta.get("tone", "따뜻함")
+    target_emotion = meta.get("target_emotion", "감동")
 
-    # Consistency anchors
-    consistency_anchors = outline_data.get("consistency_anchors", [])
+    # 2. Consistency anchors
+    consistency_anchors = outline_data.get("consistency_anchors", [
+        "캐릭터의 핵심 목표는 끝까지 동일해야 합니다",
+        "상징적 오브젝트의 의미는 일관되어야 합니다",
+        "감정선의 방향은 고정됩니다",
+        "장르와 톤은 전 파트에서 동일합니다"
+    ])
     anchors_text = "\n".join([f"{i+1}. {anchor}" for i, anchor in enumerate(consistency_anchors)])
 
-    # Global conflict arc
+    # 3. Global conflict arc
     global_conflict_arc = outline_data.get("global_conflict_arc", {})
     arc_stages = ["start", "rise", "peak", "fall", "end"]
     arc_text = "\n".join([
@@ -294,26 +295,31 @@ def generate_part_v3_prompt(
     }
     current_arc_stage = arc_stage_map.get(part_number, "")
 
-    # Emotional anchors
-    emotional_anchors = outline_data.get("emotional_anchors", [])
+    # 4. Emotional anchors
+    emotional_anchors = outline_data.get("emotional_anchors", [
+        "Part 1: 그리움",
+        "Part 2: 혼란",
+        "Part 3: 절정",
+        "Part 4: 평온"
+    ])
     anchors_emotion_text = "\n".join([f"- {anchor}" for anchor in emotional_anchors])
-    current_emotion = emotional_anchors[part_number - 1] if part_number <= len(emotional_anchors) else ""
+    current_emotion = emotional_anchors[part_number - 1] if part_number <= len(emotional_anchors) else "감정"
 
-    # Characters
+    # 5. Characters
     characters = outline_data.get("characters", [])
     characters_text = ""
     for char in characters:
         char_text = f"""
-[{char.get('name', '')}]
-- 나이: {char.get('age', '')}세
-- 역할: {char.get('role', '')}
-- 핵심 목표: {char.get('key_motivation', '')} ⚠️ (전 파트 동일)
-- 감정 여정: {char.get('emotional_arc', {}).get('start', '')} → {char.get('emotional_arc', {}).get('journey', '')} → {char.get('emotional_arc', {}).get('end', '')}
-- 목소리: {char.get('voice_type', '')}
+[{char.get('name', '인물')}]
+- 나이: {char.get('age', 65)}세
+- 역할: {char.get('role', '역할')}
+- 핵심 목표: {char.get('key_motivation', '목표')} ⚠️ (전 파트 동일)
+- 감정 여정: {char.get('emotional_arc', {}).get('start', '시작')} → {char.get('emotional_arc', {}).get('journey', '변화')} → {char.get('emotional_arc', {}).get('end', '종료')}
+- 목소리: {char.get('voice_type', 'elderly_female')}
 """
         characters_text += char_text
 
-    # Part breakdown
+    # 6. Part breakdown (안전하게 가져오기)
     part_breakdown = outline_data.get("part_breakdown", [])
     current_part = None
     for part in part_breakdown:
@@ -321,16 +327,46 @@ def generate_part_v3_prompt(
             current_part = part
             break
 
+    # Part를 찾지 못하면 기본값 생성
     if not current_part:
-        raise ValueError(f"Part {part_number} not found in part_breakdown")
+        current_part = {
+            "part": part_number,
+            "title": f"Part {part_number}",
+            "time_range_minutes": [(part_number-1)*30, part_number*30],
+            "word_count_range": [12000, 13000],
+            "primary_goal": "목표",
+            "conflict_intensity": 5,
+            "must_include": [],
+            "must_avoid": [],
+            "must_resolve": [],
+            "open_threads": [],
+            "ending_hook": "",
+            "key_revelations": []
+        }
 
-    part_title = current_part.get("title", "")
-    part_goal = current_part.get("primary_goal", "")
-    time_range_minutes = current_part.get("time_range_minutes", [0, 30])
+    part_title = current_part.get("title", f"Part {part_number}")
+    part_goal = current_part.get("primary_goal", "목표")
+
+    # time_range_minutes와 word_count_range 안전하게 추출
+    time_range = current_part.get("time_range_minutes", [(part_number-1)*30, part_number*30])
+    if isinstance(time_range, list) and len(time_range) >= 2:
+        time_range_start = time_range[0]
+        time_range_end = time_range[1]
+    else:
+        time_range_start = (part_number-1)*30
+        time_range_end = part_number*30
+
     word_count_range = current_part.get("word_count_range", [12000, 13000])
+    if isinstance(word_count_range, list) and len(word_count_range) >= 2:
+        word_count_start = word_count_range[0]
+        word_count_end = word_count_range[1]
+    else:
+        word_count_start = 12000
+        word_count_end = 13000
+
     conflict_intensity = current_part.get("conflict_intensity", 5)
 
-    # Must include/avoid/resolve
+    # Must include/avoid/resolve 안전하게 추출
     must_include = "\n".join([f"✓ {item}" for item in current_part.get("must_include", [])])
     must_avoid = "\n".join([f"✗ {item}" for item in current_part.get("must_avoid", [])])
     must_resolve = "\n".join([f"→ {item}" for item in current_part.get("must_resolve", [])])
@@ -338,23 +374,23 @@ def generate_part_v3_prompt(
     key_revelations = "\n".join([f"⚡ {item}" for item in current_part.get("key_revelations", [])])
     ending_hook = current_part.get("ending_hook", "")
 
-    # Thematic threads
+    # 7. Thematic threads
     thematic_threads = outline_data.get("thematic_threads", {})
-    main_theme = thematic_threads.get("main_theme", "")
+    main_theme = thematic_threads.get("main_theme", "가족의 의미")
     symbolic_objects = thematic_threads.get("symbolic_objects", {})
     symbolic_text = "\n".join([f"- {obj}: {meaning}" for obj, meaning in symbolic_objects.items()])
 
-    # Narrative rules
+    # 8. Narrative rules
     narrative_rules = outline_data.get("narrative_rules", {})
-    core_forbidden = narrative_rules.get("core_forbidden", [])
+    core_forbidden = narrative_rules.get("core_forbidden", FORBIDDEN_ELEMENTS)
     forbidden_text = "\n".join([f"✗ {item}" for item in core_forbidden])
 
-    # Climax dialogue rule
+    # 9. Climax dialogue rule
     climax_dialogue_rule = ""
     if part_number == 3:
         climax_dialogue_rule = "\n\n클라이맥스에서만 예외적으로 대사 25-30자 허용합니다."
 
-    # Ending note (Part 4만)
+    # 10. Ending note (Part 4만)
     ending_note = ""
     if part_number == 4:
         ending_note = """
@@ -362,25 +398,32 @@ def generate_part_v3_prompt(
 "오늘의 이야기가 당신의 마음에 작은 울림을 드렸다면 구독과 좋아요를 눌러주세요. 당신의 오늘을 늘 응원합니다."
 """
 
-    # Previous context (Part 2-4)
+    # 11. Previous context (Part 2-4)
     previous_context = ""
     if context and part_number > 1:
+        # Context 필드 안전하게 추출
+        summary = context.get('summary', '')
+        resolved_points = context.get('resolved_points', [])
+        open_threads_ctx = context.get('open_threads', [])
+        next_must_address = context.get('next_must_address', [])
+        ending_sentence = context.get('ending_sentence', '')
+
         previous_context = f"""
 【이전 Part 요약】
 
-{context.get('summary', '')}
+{summary if summary else '(요약 없음)'}
 
 【해결된 문제】
-{chr(10).join(['✓ ' + item for item in context.get('resolved_points', [])])}
+{chr(10).join(['✓ ' + item for item in resolved_points]) if resolved_points else '(없음)'}
 
 【이어받은 미해결 요소】
-{chr(10).join(['⇢ ' + item for item in context.get('open_threads', [])])}
+{chr(10).join(['⇢ ' + item for item in open_threads_ctx]) if open_threads_ctx else '(없음)'}
 
 【이 Part에서 다뤄야 할 것】
-{chr(10).join(['→ ' + item for item in context.get('next_must_address', [])])}
+{chr(10).join(['→ ' + item for item in next_must_address]) if next_must_address else '(없음)'}
 
 【이전 Part 마지막 문장】
-"{context.get('ending_sentence', '')}"
+"{ending_sentence if ending_sentence else '(없음)'}"
 
 ⚠️ 위 문장에서 자연스럽게 이어지도록 시작하세요.
 """
@@ -392,7 +435,7 @@ def generate_part_v3_prompt(
 Hook(180초 예고편) 직후 본편이 시작되는 것으로 자연스럽게 이어지세요.
 """
 
-    # 프롬프트 조립
+    # 12. 프롬프트 조립
     prompt = PART_PROMPT_V3.format(
         part_number=part_number,
         part_title=part_title,
@@ -407,17 +450,19 @@ Hook(180초 예고편) 직후 본편이 시작되는 것으로 자연스럽게 �
         current_emotion=current_emotion,
         characters=characters_text,
         part_goal=part_goal,
-        time_range_minutes=time_range_minutes,
-        word_count_range=word_count_range,
+        time_range_minutes_start=time_range_start,
+        time_range_minutes_end=time_range_end,
+        word_count_start=word_count_start,
+        word_count_end=word_count_end,
         conflict_intensity=conflict_intensity,
-        must_include=must_include,
-        must_avoid=must_avoid,
-        must_resolve=must_resolve,
-        open_threads=open_threads,
-        key_revelations=key_revelations,
-        ending_hook=ending_hook,
+        must_include=must_include if must_include else "(없음)",
+        must_avoid=must_avoid if must_avoid else "(없음)",
+        must_resolve=must_resolve if must_resolve else "(없음)",
+        open_threads=open_threads if open_threads else "(없음)",
+        key_revelations=key_revelations if key_revelations else "(없음)",
+        ending_hook=ending_hook if ending_hook else "(없음)",
         main_theme=main_theme,
-        symbolic_objects=symbolic_text,
+        symbolic_objects=symbolic_text if symbolic_text else "(없음)",
         previous_context=previous_context,
         climax_dialogue_rule=climax_dialogue_rule,
         core_forbidden=forbidden_text,
@@ -425,3 +470,66 @@ Hook(180초 예고편) 직후 본편이 시작되는 것으로 자연스럽게 �
     )
 
     return prompt
+
+
+def validate_part_text(part_text: str, part_number: int) -> tuple:
+    """
+    생성된 Part 텍스트의 품질을 검증합니다.
+
+    Args:
+        part_text (str): 생성된 Part 텍스트
+        part_number (int): Part 번호
+
+    Returns:
+        tuple: (is_valid: bool, warnings: list, stats: dict)
+    """
+    warnings = []
+    stats = {}
+
+    # 1. 대사 비율 체크
+    dialogue_count = part_text.count('"')
+    total_chars = len(part_text)
+    dialogue_ratio = (dialogue_count / total_chars * 100) if total_chars > 0 else 0
+    stats['dialogue_ratio'] = dialogue_ratio
+
+    if dialogue_ratio > 15:
+        warnings.append(f"대사 비율이 {dialogue_ratio:.1f}%로 너무 높습니다 (권장: 5-10%)")
+
+    # 2. 중국어 체크
+    chinese_chars = sum(1 for c in part_text if '\u4e00' <= c <= '\u9fff')
+    stats['chinese_chars'] = chinese_chars
+
+    if chinese_chars > 0:
+        warnings.append(f"중국어 문자 {chinese_chars}개 발견")
+
+    # 3. 반복 체크 (동일 문장 2회 이상)
+    sentences = re.split(r'[\.?!]\s+', part_text)
+    unique_sentences = len(set(sentences))
+    total_sentences = len(sentences)
+    repetition_ratio = (1 - unique_sentences / total_sentences) * 100 if total_sentences > 0 else 0
+    stats['repetition_ratio'] = repetition_ratio
+
+    if repetition_ratio > 10:
+        warnings.append(f"반복률이 {repetition_ratio:.1f}%로 높습니다 (권장: 10% 이하)")
+
+    # 4. 길이 체크
+    stats['length'] = total_chars
+    target_min = 12000 if part_number < 4 else 11500
+    target_max = 13000 if part_number < 4 else 12500
+
+    if total_chars < target_min:
+        warnings.append(f"분량이 {total_chars}자로 부족합니다 (최소: {target_min}자)")
+    elif total_chars > target_max * 1.2:
+        warnings.append(f"분량이 {total_chars}자로 너무 깁니다 (최대: {target_max}자)")
+
+    # 5. 영어 단어 과다 사용 체크
+    english_words = re.findall(r'[A-Za-z]{3,}', part_text)
+    stats['english_words'] = len(english_words)
+
+    if len(english_words) > 10:
+        warnings.append(f"영어 단어가 {len(english_words)}개 사용되었습니다")
+
+    # 검증 통과 여부
+    is_valid = chinese_chars == 0 and dialogue_ratio <= 15 and repetition_ratio <= 15
+
+    return is_valid, warnings, stats

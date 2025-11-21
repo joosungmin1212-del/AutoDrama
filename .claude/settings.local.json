@@ -8,7 +8,15 @@
       "Bash(chmod:*)",
       "Bash(git rm:*)",
       "Bash(pip show:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(python:*)",
+      "Bash(test_logs/step1_outline.log)",
+      "Bash(echo:*)",
+      "Bash(pip install pyyaml)",
+      "Bash(tee:*)",
+      "Bash(test_logs/code_validation.log)",
+      "Bash(cat:*)",
+      "Bash(test_logs/validation_check.log)"
     ],
     "deny": [],
     "ask": []

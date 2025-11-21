@@ -1,9 +1,11 @@
 """
-LLM 모듈
-vLLM을 사용한 Qwen 2.5 32B AWQ 모델 추론
+LLM 모듈 (72B 최적화 + 안정화 로직 강화)
+vLLM을 사용한 Qwen 2.5 72B AWQ 모델 추론
 """
 import json
 import yaml
+import re
+import time
 from vllm import LLM, SamplingParams
 from typing import Dict, Any, Optional, List
 import os
@@ -12,7 +14,7 @@ import os
 class LLMEngine:
     """
     vLLM 기반 LLM 엔진
-    Qwen2.5-32B-AWQ 모델 최적화
+    Qwen2.5-72B-AWQ 모델 최적화
     """
 
     def __init__(
@@ -23,42 +25,31 @@ class LLMEngine:
         tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.92
     ):
-        """
-        LLM 엔진 초기화
-
-        Args:
-            config_path: 설정 파일 경로
-            model_path: 모델 경로 (None이면 config에서 읽음)
-            max_model_len: 최대 모델 컨텍스트 길이 (8192, 16384, 32768)
-            tensor_parallel_size: 텐서 병렬화 (GPU 개수)
-            gpu_memory_utilization: GPU 메모리 사용률 (0.0~1.0)
-        """
+        """LLM 엔진 초기화"""
         # Config 로드
         if os.path.exists(config_path):
             with open(config_path, 'r', encoding='utf-8') as f:
                 self.config = yaml.safe_load(f)
         else:
-            # 기본 설정
+            # 기본 설정 (72B 최적화)
             self.config = {
                 'models': {
-                    'llm': '/workspace/huggingface_cache/Qwen2.5-32B-AWQ',
+                    'llm': '/workspace/huggingface_cache/Qwen2.5-72B-AWQ',
                     'cache_dir': '/workspace/huggingface_cache'
                 },
                 'llm': {
-                    'outline': {'temperature': 0.7, 'max_tokens': 4096},
-                    'hook': {'temperature': 0.8, 'max_tokens': 2048},
-                    'parts': {'temperature': 0.75, 'max_tokens': 16384}
+                    'outline': {'temperature': 0.65, 'max_tokens': 7000, 'top_p': 0.92, 'top_k': 40, 'repetition_penalty': 1.13},
+                    'hook': {'temperature': 0.75, 'max_tokens': 2048, 'top_p': 0.92, 'top_k': 40, 'repetition_penalty': 1.13},
+                    'parts': {'temperature': 0.70, 'max_tokens': 5000, 'top_p': 0.92, 'top_k': 40, 'repetition_penalty': 1.13}
                 }
             }
 
-        # 모델 경로 결정
         if model_path is None:
             model_path = self.config['models']['llm']
 
         print(f"Loading vLLM model: {model_path}")
         print(f"  - max_model_len: {max_model_len}")
         print(f"  - tensor_parallel_size: {tensor_parallel_size}")
-        print(f"  - gpu_memory_utilization: {gpu_memory_utilization}")
 
         # vLLM 엔진 초기화
         self.llm = LLM(
@@ -80,33 +71,23 @@ class LLMEngine:
         prompt: str,
         max_tokens: int = 4096,
         temperature: float = 0.7,
-        top_p: float = 0.9,
+        top_p: float = 0.92,
+        top_k: int = 40,
+        repetition_penalty: float = 1.13,
         stop: Optional[List[str]] = None,
         presence_penalty: float = 0.0,
         frequency_penalty: float = 0.0
     ) -> str:
-        """
-        텍스트 생성 (범용 함수)
-
-        Args:
-            prompt: 입력 프롬프트
-            max_tokens: 최대 생성 토큰 수
-            temperature: 온도 (0.0~2.0)
-            top_p: Top-p 샘플링
-            stop: 정지 토큰 리스트
-            presence_penalty: Presence penalty
-            frequency_penalty: Frequency penalty
-
-        Returns:
-            생성된 텍스트
-        """
+        """텍스트 생성 (72B 최적화 파라미터)"""
         if stop is None:
-            stop = ["\n以上", "\nThis", "</s>"]
+            stop = ["\n以上", "\nThis", "</s>", "}\n이"]
 
         sampling_params = SamplingParams(
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
             stop=stop,
             presence_penalty=presence_penalty,
             frequency_penalty=frequency_penalty
@@ -115,72 +96,11 @@ class LLMEngine:
         outputs = self.llm.generate([prompt], sampling_params)
         return outputs[0].outputs[0].text
 
-    def generate_text_chunked(
-        self,
-        prompt: str,
-        total_target_length: int = 30000,
-        chunk_size: int = 8192,
-        temperature: float = 0.7,
-        overlap: int = 200
-    ) -> str:
-        """
-        대규모 출력 생성 (청킹 방식)
-
-        긴 텍스트(2~3만자)를 여러 번 나눠서 생성
-
-        Args:
-            prompt: 입력 프롬프트
-            total_target_length: 목표 텍스트 길이 (자)
-            chunk_size: 청크당 토큰 수
-            temperature: 온도
-            overlap: 청크 간 겹침 (자)
-
-        Returns:
-            전체 생성된 텍스트
-        """
-        result_text = ""
-        chunk_count = 0
-        max_chunks = (total_target_length // (chunk_size * 2)) + 2  # 안전 마진
-
-        print(f"Chunked generation: target={total_target_length} chars, chunk_size={chunk_size} tokens")
-
-        while len(result_text) < total_target_length and chunk_count < max_chunks:
-            # 청크 프롬프트 생성
-            if chunk_count == 0:
-                chunk_prompt = prompt
-            else:
-                # 이전 텍스트 일부를 컨텍스트로 포함
-                context = result_text[-overlap:] if len(result_text) > overlap else result_text
-                chunk_prompt = f"{prompt}\n\n지금까지 작성된 내용:\n{context}\n\n이어서 계속 작성:"
-
-            # 생성
-            chunk_text = self.generate_text(
-                prompt=chunk_prompt,
-                max_tokens=chunk_size,
-                temperature=temperature
-            )
-
-            # 결과 추가
-            result_text += chunk_text
-            chunk_count += 1
-
-            print(f"  Chunk {chunk_count}: +{len(chunk_text)} chars (total: {len(result_text)})")
-
-        return result_text
-
     def extract_first_json(self, text: str) -> str:
-        """
-        LLM이 JSON을 두 번 출력하는 경우 첫 번째 JSON만 추출
+        """첫 번째 JSON만 추출 (중복 출력 방지)"""
+        # UTF-8 BOM 제거
+        text = text.replace('\ufeff', '')
 
-        Args:
-            text: JSON이 포함된 텍스트
-
-        Returns:
-            첫 번째 JSON 문자열
-
-        Raises:
-            ValueError: JSON을 찾을 수 없거나 형식이 잘못된 경우
-        """
         start = text.find("{")
         if start == -1:
             raise ValueError("JSON start '{' not found")
@@ -192,75 +112,130 @@ class LLMEngine:
             elif text[i] == "}":
                 depth -= 1
                 if depth == 0:
-                    # JSON 닫힘
                     return text[start:i+1]
 
         raise ValueError("JSON not properly closed")
 
-    def call_llm(self, prompt: str, phase: str) -> Dict[str, Any]:
+    def clean_json_string(self, json_str: str) -> str:
+        """JSON 문자열 정리 (invalid escape 제거)"""
+        # 코드블록 제거
+        json_str = json_str.replace("```json", "").replace("```", "")
+
+        # UTF-8 BOM 제거
+        json_str = json_str.replace('\ufeff', '')
+
+        # null, None, N/A 처리
+        json_str = re.sub(r':\s*null\s*,', ': "",', json_str)
+        json_str = re.sub(r':\s*None\s*,', ': "",', json_str)
+        json_str = re.sub(r':\s*"N/A"\s*,', ': "",', json_str)
+
+        return json_str.strip()
+
+    def detect_chinese(self, text: str) -> bool:
+        """중국어 감지"""
+        chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+        return chinese_chars > 5
+
+    def call_llm(self, prompt: str, phase: str, max_retry: int = 3) -> Dict[str, Any]:
         """
-        LLM 호출 (기존 인터페이스 유지)
+        LLM 호출 (JSON 모드) - 재시도 로직 포함
 
         Args:
             prompt: 프롬프트
             phase: 단계 ("outline", "hook", "parts")
+            max_retry: 최대 재시도 횟수
 
         Returns:
             JSON 파싱된 결과
         """
-        # Phase별 파라미터 로드
+        # Phase별 파라미터 로드 (72B 최적화)
         if phase == "outline":
-            params = self.config['llm']['outline']
+            params = self.config['llm'].get('outline', {
+                'temperature': 0.65,
+                'max_tokens': 7000,
+                'top_p': 0.92,
+                'top_k': 40,
+                'repetition_penalty': 1.13
+            })
         elif phase == "hook":
-            params = self.config['llm']['hook']
+            params = self.config['llm'].get('hook', {
+                'temperature': 0.75,
+                'max_tokens': 2048,
+                'top_p': 0.92,
+                'top_k': 40,
+                'repetition_penalty': 1.13
+            })
         else:
-            params = self.config['llm']['parts']
+            params = self.config['llm'].get('parts', {
+                'temperature': 0.70,
+                'max_tokens': 5000,
+                'top_p': 0.92,
+                'top_k': 40,
+                'repetition_penalty': 1.13
+            })
 
-        # ----- 1. raw 생성 -----
-        response_text = self.generate_text(
-            prompt=prompt,
-            max_tokens=params['max_tokens'],
-            temperature=params['temperature'],
-            stop=["\n以上", "\nThis", "}\n이", "</s>"]
-        )
+        for attempt in range(max_retry):
+            try:
+                print(f"\n[{phase}] Attempt {attempt + 1}/{max_retry}")
 
-        print(f"\n[{phase}] Raw response preview:")
-        print(response_text[:500])
-        print(f"[{phase}] Total length: {len(response_text)} chars")
+                # 1. LLM 생성
+                response_text = self.generate_text(
+                    prompt=prompt,
+                    max_tokens=params.get('max_tokens', 4096),
+                    temperature=params.get('temperature', 0.7),
+                    top_p=params.get('top_p', 0.92),
+                    top_k=params.get('top_k', 40),
+                    repetition_penalty=params.get('repetition_penalty', 1.13),
+                    stop=["\n以上", "\nThis", "}\n이", "</s>", "}\n\n"]
+                )
 
-        try:
-            # ----- 2. 먼저 전체에서 첫 JSON만 추출 -----
-            # (코드블록 여부 상관 없이 가장 첫 JSON부터 끝 JSON까지 잘라냄)
-            json_candidate = self.extract_first_json(response_text)
+                print(f"[{phase}] Raw response: {len(response_text)} chars")
+                print(f"[{phase}] Preview: {response_text[:300]}")
 
-            # ----- 3. code block 내부인 경우를 대비한 보정 -----
-            # (혹시 JSON이 code block 안에 있으면 안쪽만 다시 추출)
-            if "```" in json_candidate:
-                # code block inside first JSON? → extract again
-                cleaned = json_candidate.replace("```json", "").replace("```", "").strip()
-                json_candidate = self.extract_first_json(cleaned)
+                # 2. 중국어 감지
+                if self.detect_chinese(response_text):
+                    print(f"✗ [{phase}] Chinese detected, retrying...")
+                    time.sleep(1)
+                    continue
 
-            # ----- 4. json loads -----
-            result = json.loads(json_candidate)
-            print(f"✓ [{phase}] JSON parsed successfully!")
-            return result
+                # 3. JSON 추출
+                json_candidate = self.extract_first_json(response_text)
+                json_candidate = self.clean_json_string(json_candidate)
 
-        except Exception as e:
-            print(f"✗ [{phase}] JSON parsing failed: {e}")
-            print("----- RAW TEXT -----")
-            print(response_text)
-            print("--------------------")
-            raise
+                # 4. JSON 파싱
+                result = json.loads(json_candidate)
+                print(f"✓ [{phase}] JSON parsed successfully!")
+                return result
 
-    def call_llm_text(self, prompt: str, phase: str) -> str:
+            except json.JSONDecodeError as e:
+                print(f"✗ [{phase}] JSON decode error: {e}")
+                if attempt < max_retry - 1:
+                    print(f"   Retrying in 2 seconds...")
+                    time.sleep(2)
+                else:
+                    print("----- RAW TEXT -----")
+                    print(response_text)
+                    print("--------------------")
+                    raise
+
+            except Exception as e:
+                print(f"✗ [{phase}] Error: {e}")
+                if attempt < max_retry - 1:
+                    print(f"   Retrying in 2 seconds...")
+                    time.sleep(2)
+                else:
+                    raise
+
+        raise RuntimeError(f"Failed to generate valid JSON after {max_retry} attempts")
+
+    def call_llm_text(self, prompt: str, phase: str, max_retry: int = 2) -> str:
         """
-        LLM 호출 (순수 텍스트 반환)
-
-        JSON 파싱 없이 순수 텍스트 반환
+        LLM 호출 (텍스트 모드) - 재시도 로직 포함
 
         Args:
             prompt: 프롬프트
             phase: 단계
+            max_retry: 최대 재시도 횟수
 
         Returns:
             생성된 텍스트
@@ -268,31 +243,49 @@ class LLMEngine:
         if phase in self.config['llm']:
             params = self.config['llm'][phase]
         else:
-            params = {'temperature': 0.7, 'max_tokens': 4096}
+            params = {'temperature': 0.7, 'max_tokens': 4096, 'top_p': 0.92, 'top_k': 40, 'repetition_penalty': 1.13}
 
-        return self.generate_text(
-            prompt=prompt,
-            max_tokens=params['max_tokens'],
-            temperature=params['temperature']
-        )
+        for attempt in range(max_retry):
+            try:
+                print(f"\n[{phase}] Text generation attempt {attempt + 1}/{max_retry}")
+
+                response_text = self.generate_text(
+                    prompt=prompt,
+                    max_tokens=params.get('max_tokens', 4096),
+                    temperature=params.get('temperature', 0.7),
+                    top_p=params.get('top_p', 0.92),
+                    top_k=params.get('top_k', 40),
+                    repetition_penalty=params.get('repetition_penalty', 1.13)
+                )
+
+                # 중국어 감지
+                if self.detect_chinese(response_text):
+                    print(f"✗ [{phase}] Chinese detected, retrying...")
+                    if attempt < max_retry - 1:
+                        time.sleep(1)
+                        continue
+                    else:
+                        print(f"⚠ [{phase}] Warning: Chinese detected but no retries left")
+
+                print(f"✓ [{phase}] Text generated: {len(response_text)} chars")
+                return response_text
+
+            except Exception as e:
+                print(f"✗ [{phase}] Error: {e}")
+                if attempt < max_retry - 1:
+                    time.sleep(2)
+                else:
+                    raise
+
+        raise RuntimeError(f"Failed to generate text after {max_retry} attempts")
 
 
-# ============================================
 # 싱글톤 패턴
-# ============================================
 _llm_engine = None
 
 
 def get_llm_engine(config_path: str = "config.yaml") -> LLMEngine:
-    """
-    LLM 엔진 싱글톤 접근
-
-    Args:
-        config_path: 설정 파일 경로
-
-    Returns:
-        LLMEngine 인스턴스
-    """
+    """LLM 엔진 싱글톤 반환"""
     global _llm_engine
     if _llm_engine is None:
         _llm_engine = LLMEngine(config_path)
