@@ -3,7 +3,7 @@ set -e
 
 echo "========================================"
 echo "AutoDrama Full Installation"
-echo "Qwen2.5-32B-AWQ + vLLM + SDXL Lightning"
+echo "Qwen2.5-72B-AWQ + vLLM + SDXL Lightning"
 echo "========================================"
 echo ""
 
@@ -77,17 +77,17 @@ pip install --break-system-packages \
 # ============================================
 # 9) Model Cache & Download
 # ============================================
-echo "[9/9] Setting up model cache and downloading Qwen2.5-32B-AWQ..."
+echo "[9/9] Setting up model cache and downloading Qwen2.5-72B-AWQ..."
 
 mkdir -p /workspace/huggingface_cache
 mkdir -p /workspace/models/whisper
 mkdir -p /workspace/models/sdxl
 mkdir -p /workspace/output
 
-# Qwen2.5-32B-AWQ 다운로드
-echo "Downloading Qwen2.5-32B-AWQ (this may take a while)..."
-huggingface-cli download Qwen/Qwen2.5-32B-Instruct-AWQ \
-  --local-dir /workspace/huggingface_cache/Qwen2.5-32B-AWQ \
+# Qwen2.5-72B-AWQ 다운로드
+echo "Downloading Qwen2.5-72B-AWQ (this may take a while)..."
+huggingface-cli download Qwen/Qwen2.5-72B-Instruct-AWQ \
+  --local-dir /workspace/huggingface_cache/Qwen2.5-72B-AWQ \
   --local-dir-use-symlinks False
 
 # SDXL Lightning 다운로드 (optional, 첫 실행 시 자동 다운로드됨)
