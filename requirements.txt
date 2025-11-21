@@ -19,9 +19,9 @@ numpy>=1.26.0,<2.0.0
 # ============================================
 # HuggingFace Ecosystem (Strictly Versioned)
 # ============================================
-huggingface-hub>=0.23.0,<0.30.0
-# Compatible with transformers 4.45.2
-# Avoid 0.30+ (breaking changes)
+huggingface-hub>=0.34.0,<1.0.0
+# transformers 4.45.2 requires huggingface-hub>=0.34.0 (as of 2025-01)
+# Updated to match current transformers runtime requirements
 
 hf-transfer>=0.1.0,<1.0.0
 # Fast model downloads

@@ -70,7 +70,7 @@ check_version "torch" "(2.5.1+cu124)"
 check_version "vllm" "(0.6.6.post1)"
 check_version "transformers" "(4.45.2)"
 check_version "tokenizers" "(0.22.x-0.23.x)"
-check_version "huggingface-hub" "(must be <1.0)"
+check_version "huggingface-hub" "(>=0.34.0,<1.0)"
 check_version "diffusers" "(must be <0.30.0)"
 check_version "TTS" "(>=0.22.0)"
 check_version "whisper-ctranslate2" "(>=0.4.3)"
@@ -97,14 +97,14 @@ if [[ "$NUMPY_VERSION" == 2.* ]]; then
 fi
 
 HF_HUB_VERSION=$(pip show huggingface-hub 2>/dev/null | grep "^Version:" | awk '{print $2}')
-if [[ "$HF_HUB_VERSION" == 1.* ]]; then
-    echo "✗ CRITICAL: huggingface-hub $HF_HUB_VERSION detected (transformers requires <1.0)"
-    echo "   🔧 Auto-fixing: Downgrading huggingface-hub to 0.29.x..."
-    pip install --break-system-packages --force-reinstall 'huggingface-hub>=0.23.0,<0.30.0' -q
+if [[ "$HF_HUB_VERSION" == 1.* ]] || [[ "$HF_HUB_VERSION" =~ ^0\.([0-9]|[12][0-9]|3[0-3])\.  ]]; then
+    echo "✗ CRITICAL: huggingface-hub $HF_HUB_VERSION detected (transformers 4.45.2 requires >=0.34.0)"
+    echo "   🔧 Auto-fixing: Upgrading huggingface-hub to 0.34.x+..."
+    pip install --break-system-packages --force-reinstall 'huggingface-hub>=0.34.0,<1.0.0' -q
 
     # Re-check after fix
     HF_HUB_VERSION=$(pip show huggingface-hub 2>/dev/null | grep "^Version:" | awk '{print $2}')
-    if [[ "$HF_HUB_VERSION" == 0.* ]]; then
+    if [[ "$HF_HUB_VERSION" =~ ^0\.(3[4-9]|[4-9][0-9])\.  ]]; then
         echo "   ✓ Fixed: huggingface-hub $HF_HUB_VERSION"
     else
         echo "   ✗ Auto-fix failed! Manual intervention required."
