@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# Note: set -e removed to allow error recovery
 
 echo "========================================"
 echo "AutoDrama Full Installation"
@@ -41,9 +41,11 @@ python3 -c "import torch; print(f'✓ CUDA available: {torch.cuda.is_available()
 echo "[3/6] Installing all Python dependencies from requirements.txt..."
 echo "       This will automatically resolve version conflicts"
 
-# Use pip's dependency resolver with requirements.txt as single source of truth
-# If installation fails due to distutils blinker, remove it and retry
-if ! pip install --break-system-packages -r requirements.txt 2>&1 | tee /tmp/pip_install.log; then
+# Use PIPESTATUS to capture pip's real exit code (not tee's)
+pip install --break-system-packages -r requirements.txt 2>&1 | tee /tmp/pip_install.log
+INSTALL_EXIT_CODE=${PIPESTATUS[0]}
+
+if [ $INSTALL_EXIT_CODE -ne 0 ]; then
     if grep -q "Cannot uninstall blinker" /tmp/pip_install.log; then
         echo ""
         echo "⚠️  Installation failed due to distutils-installed blinker conflict"
@@ -56,13 +58,19 @@ if ! pip install --break-system-packages -r requirements.txt 2>&1 | tee /tmp/pip
         rm -rf /usr/local/lib/python3.*/dist-packages/blinker* 2>/dev/null || true
 
         echo "🔄 Retrying installation..."
-        pip install --break-system-packages -r requirements.txt
+        pip install --break-system-packages -r requirements.txt || {
+            echo "✗ Retry failed! Check logs above."
+            exit 1
+        }
     else
         echo ""
         echo "✗ Installation failed for unknown reason. Check logs above."
+        cat /tmp/pip_install.log
         exit 1
     fi
 fi
+
+echo "✓ All dependencies installed successfully"
 
 # Clean up temporary log
 rm -f /tmp/pip_install.log
