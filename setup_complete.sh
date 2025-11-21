@@ -27,6 +27,7 @@ echo "       (This must be installed before other packages)"
 
 pip install --break-system-packages \
   torch==2.5.1 \
+  torchvision==0.20.1 \
   torchaudio==2.5.1 \
   --extra-index-url https://download.pytorch.org/whl/cu124
 
@@ -67,14 +68,15 @@ echo ""
 echo "Dependency Validation:"
 check_version "numpy" "(must be <2.0.0 for vLLM)"
 check_version "torch" "(2.5.1+cu124)"
+check_version "torchvision" "(0.20.1+cu124 - vLLM requirement)"
 check_version "vllm" "(0.6.6.post1)"
 check_version "transformers" "(4.45.2)"
-check_version "tokenizers" "(0.22.x-0.23.x)"
+check_version "tokenizers" "(>=0.19.1,<0.24.0)"
 check_version "huggingface-hub" "(>=0.34.0,<1.0)"
 check_version "diffusers" "(must be <0.30.0)"
 check_version "TTS" "(>=0.22.0)"
 check_version "whisper-ctranslate2" "(>=0.4.3)"
-check_version "xformers" "(>=0.0.23)"
+check_version "xformers" "(0.0.28.post3 - vLLM requirement)"
 
 # Auto-repair known conflicts
 echo ""
@@ -106,6 +108,22 @@ if [[ "$HF_HUB_VERSION" == 1.* ]] || [[ "$HF_HUB_VERSION" =~ ^0\.([0-9]|[12][0-9
     HF_HUB_VERSION=$(pip show huggingface-hub 2>/dev/null | grep "^Version:" | awk '{print $2}')
     if [[ "$HF_HUB_VERSION" =~ ^0\.(3[4-9]|[4-9][0-9])\.  ]]; then
         echo "   ✓ Fixed: huggingface-hub $HF_HUB_VERSION"
+    else
+        echo "   ✗ Auto-fix failed! Manual intervention required."
+        exit 1
+    fi
+fi
+
+TOKENIZERS_VERSION=$(pip show tokenizers 2>/dev/null | grep "^Version:" | awk '{print $2}')
+if [[ "$TOKENIZERS_VERSION" =~ ^0\.([0-9]|1[0-8])\.  ]]; then
+    echo "✗ CRITICAL: tokenizers $TOKENIZERS_VERSION detected (vLLM 0.6.6.post1 requires >=0.19.1)"
+    echo "   🔧 Auto-fixing: Upgrading tokenizers to 0.19.1+..."
+    pip install --break-system-packages --force-reinstall 'tokenizers>=0.19.1,<0.24.0' -q
+
+    # Re-check after fix
+    TOKENIZERS_VERSION=$(pip show tokenizers 2>/dev/null | grep "^Version:" | awk '{print $2}')
+    if [[ "$TOKENIZERS_VERSION" =~ ^0\.(19|2[0-3])\.  ]]; then
+        echo "   ✓ Fixed: tokenizers $TOKENIZERS_VERSION"
     else
         echo "   ✗ Auto-fix failed! Manual intervention required."
         exit 1

@@ -20,28 +20,32 @@ numpy>=1.26.0,<2.0.0
 # HuggingFace Ecosystem (Strictly Versioned)
 # ============================================
 huggingface-hub>=0.34.0,<1.0.0
-# transformers 4.45.2 requires huggingface-hub>=0.34.0 (as of 2025-01)
-# Updated to match current transformers runtime requirements
+# transformers 4.45.2 runtime requires huggingface-hub>=0.34.0
+# vLLM 0.6.6.post1 compatible
 
 hf-transfer>=0.1.0,<1.0.0
 # Fast model downloads
 
 transformers==4.45.2
-# vLLM 0.6.6.post1 requires transformers>=4.45,<4.46
-# Fixed version to prevent auto-upgrades
+# vLLM 0.6.6.post1 official requirement: transformers>=4.45.2
+# Qwen2.5-72B requires transformers>=4.37.0
+# Fixed to 4.45.2 for stability
 
-tokenizers>=0.22.0,<=0.23.0
-# transformers 4.45.2 requires tokenizers>=0.22.0,<=0.23.0
-# 0.22.x is required for transformers 4.45.2
+tokenizers>=0.19.1,<0.24.0
+# vLLM 0.6.6.post1 official requirement: tokenizers>=0.19.1
+# transformers 4.45.2 runtime compatible with 0.22.x-0.23.x
+# Range expanded to cover both requirements
 # WARNING: faster-whisper requires tokenizers<0.16 (INCOMPATIBLE!)
 
 # ============================================
 # PyTorch (Installed via setup.sh with --extra-index-url)
 # ============================================
 # torch==2.5.1+cu124
+# torchvision==0.20.1+cu124
 # torchaudio==2.5.1+cu124
 # NOTE: These are installed separately in setup_complete.sh
-#       to ensure correct CUDA version
+#       to ensure correct CUDA version and compatibility
+# vLLM 0.6.6.post1 requires torchvision==0.20.1
 
 # ============================================
 # LLM Inference - vLLM
@@ -86,9 +90,10 @@ safetensors>=0.4.0,<1.0.0
 invisible-watermark>=0.2.0,<1.0.0
 # SDXL watermarking
 
-xformers>=0.0.23,<0.1.0
+xformers==0.0.28.post3
 # Memory-efficient attention
-# Compatible with torch 2.5.1
+# vLLM 0.6.6.post1 official requirement
+# Compatible with torch 2.5.1 + CUDA 12.4
 
 # ============================================
 # Utilities
