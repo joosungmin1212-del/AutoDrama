@@ -120,8 +120,8 @@ tqdm>=4.66.0,<5.0.0
 #   xformers 0.0.23 → torch 2.5.1 ✓
 #
 # VRAM estimate:
-#   - vLLM (Qwen 32B AWQ): ~18-20GB
+#   - vLLM (Qwen 72B AWQ): ~36-40GB
 #   - SDXL Lightning: ~6-8GB
 #   - TTS: ~2-3GB
 #   - Whisper large-v3: ~3-4GB
-#   Total: ~29-35GB (40GB+ GPU recommended)
+#   Total: ~47-55GB (80GB GPU recommended, 40GB minimum)

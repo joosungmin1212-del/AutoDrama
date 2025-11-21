@@ -6,114 +6,194 @@ echo "AutoDrama Full Installation"
 echo "Qwen2.5-72B-AWQ + vLLM + SDXL Lightning"
 echo "========================================"
 echo ""
-
-apt-get update
-
-# ============================================
-# 1) Core Dependencies (충돌 방지 순서)
-# ============================================
-echo "[1/9] Installing Core Python packages..."
-pip install --break-system-packages \
-  "numpy>=1.26.0,<2.0.0" \
-  "pyyaml>=6.0" \
-  "ffmpeg-python>=0.2.0"
+echo "This script will install all dependencies in the correct order"
+echo "to avoid version conflicts. Estimated time: 10-15 minutes"
+echo ""
 
 # ============================================
-# 2) HuggingFace Ecosystem (버전 고정)
+# Step 1: System Dependencies
 # ============================================
-echo "[2/9] Installing HuggingFace ecosystem..."
-pip install --break-system-packages \
-  "huggingface-hub>=0.23.0,<0.30.0" \
-  "hf-transfer>=0.1.0" \
-  "transformers==4.45.2" \
-  "tokenizers==0.20.3"
+echo "[1/6] Updating system packages..."
+apt-get update -qq
+
+echo "[1/6] Installing FFmpeg and system dependencies..."
+apt-get install -y -qq ffmpeg git
 
 # ============================================
-# 3) PyTorch 2.5.1 + cu124
+# Step 2: PyTorch (MUST install first)
 # ============================================
-echo "[3/9] Installing PyTorch 2.5.1 + CUDA 12.4..."
+echo "[2/6] Installing PyTorch 2.5.1 + CUDA 12.4..."
+echo "       (This must be installed before other packages)"
+
 pip install --break-system-packages \
   torch==2.5.1 \
   torchaudio==2.5.1 \
   --extra-index-url https://download.pytorch.org/whl/cu124
 
-# ============================================
-# 4) vLLM 0.6.6.post1
-# ============================================
-echo "[4/9] Installing vLLM 0.6.6.post1..."
-pip install --break-system-packages "vllm==0.6.6.post1"
+# Verify PyTorch installation
+python3 -c "import torch; print(f'✓ PyTorch {torch.__version__} installed')"
+python3 -c "import torch; print(f'✓ CUDA available: {torch.cuda.is_available()}')"
 
 # ============================================
-# 5) STT - whisper-ctranslate2
+# Step 3: Install ALL other dependencies from requirements.txt
 # ============================================
-echo "[5/9] Installing whisper-ctranslate2..."
-pip install --break-system-packages "whisper-ctranslate2>=0.4.3"
+echo "[3/6] Installing all Python dependencies from requirements.txt..."
+echo "       This will automatically resolve version conflicts"
+
+# Use pip's dependency resolver with requirements.txt as single source of truth
+pip install --break-system-packages -r requirements.txt
 
 # ============================================
-# 6) TTS - Coqui TTS
+# Step 4: Verify Critical Package Versions
 # ============================================
-echo "[6/9] Installing TTS (Coqui)..."
-pip install --break-system-packages --ignore-installed "TTS>=0.22.0"
+echo "[4/6] Verifying critical package versions..."
+
+# Function to check package version
+check_version() {
+    local package=$1
+    local constraint=$2
+    local version=$(pip show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}')
+
+    if [ -z "$version" ]; then
+        echo "✗ $package: NOT INSTALLED"
+        return 1
+    else
+        echo "✓ $package: $version $constraint"
+    fi
+}
+
+# Critical version checks
+echo ""
+echo "Dependency Validation:"
+check_version "numpy" "(must be <2.0.0 for vLLM)"
+check_version "torch" "(2.5.1+cu124)"
+check_version "vllm" "(0.6.6.post1)"
+check_version "transformers" "(4.45.2)"
+check_version "tokenizers" "(0.20.3)"
+check_version "huggingface-hub" "(must be <1.0)"
+check_version "diffusers" "(must be <0.30.0)"
+check_version "TTS" "(>=0.22.0)"
+check_version "whisper-ctranslate2" "(>=0.4.3)"
+check_version "xformers" "(>=0.0.23)"
+
+# Additional validation
+echo ""
+echo "Checking for known conflicts..."
+
+NUMPY_VERSION=$(pip show numpy 2>/dev/null | grep "^Version:" | awk '{print $2}')
+if [[ "$NUMPY_VERSION" == 2.* ]]; then
+    echo "✗ CRITICAL: numpy $NUMPY_VERSION detected (vLLM requires <2.0.0)"
+    echo "   Run: pip install --force-reinstall 'numpy>=1.26.0,<2.0.0'"
+    exit 1
+fi
+
+HF_HUB_VERSION=$(pip show huggingface-hub 2>/dev/null | grep "^Version:" | awk '{print $2}')
+if [[ "$HF_HUB_VERSION" == 1.* ]]; then
+    echo "✗ CRITICAL: huggingface-hub $HF_HUB_VERSION detected (transformers requires <1.0)"
+    echo "   Run: pip install --force-reinstall 'huggingface-hub>=0.23.0,<0.30.0'"
+    exit 1
+fi
+
+DIFFUSERS_VERSION=$(pip show diffusers 2>/dev/null | grep "^Version:" | awk '{print $2}')
+if [[ "$DIFFUSERS_VERSION" == 0.3* ]] || [[ "$DIFFUSERS_VERSION" == 0.4* ]]; then
+    echo "✗ WARNING: diffusers $DIFFUSERS_VERSION may require numpy 2.x"
+    echo "   Recommended: diffusers <0.30.0"
+fi
+
+echo ""
+echo "✓ All critical packages validated!"
 
 # ============================================
-# 7) Image Generation - SDXL Lightning
+# Step 5: Setup Model Cache Directories
 # ============================================
-echo "[7/9] Installing diffusers + SDXL Lightning dependencies..."
-pip install --break-system-packages \
-  "diffusers>=0.27.0" \
-  "accelerate>=0.20.0" \
-  "safetensors>=0.4.0" \
-  "invisible-watermark>=0.2.0" \
-  "xformers>=0.0.23"
-
-# ============================================
-# 8) Utilities
-# ============================================
-echo "[8/9] Installing utilities..."
-pip install --break-system-packages \
-  "Pillow>=10.0.0" \
-  "tqdm>=4.66.0"
-
-# ============================================
-# 9) Model Cache & Download
-# ============================================
-echo "[9/9] Setting up model cache and downloading Qwen2.5-72B-AWQ..."
+echo "[5/6] Setting up model cache directories..."
 
 mkdir -p /workspace/huggingface_cache
 mkdir -p /workspace/models/whisper
 mkdir -p /workspace/models/sdxl
-mkdir -p /workspace/output
+mkdir -p /workspace/outputs
 
-# Qwen2.5-72B-AWQ 다운로드
-echo "Downloading Qwen2.5-72B-AWQ (this may take a while)..."
-huggingface-cli download Qwen/Qwen2.5-72B-Instruct-AWQ \
-  --local-dir /workspace/huggingface_cache/Qwen2.5-72B-AWQ \
-  --local-dir-use-symlinks False
-
-# SDXL Lightning 다운로드 (optional, 첫 실행 시 자동 다운로드됨)
-echo "SDXL Lightning will be downloaded on first use."
+echo "✓ Directories created:"
+echo "  - /workspace/huggingface_cache (HuggingFace models)"
+echo "  - /workspace/models/whisper (Whisper models)"
+echo "  - /workspace/models/sdxl (SDXL models)"
+echo "  - /workspace/outputs (Generated videos)"
 
 # ============================================
-# 10) Cleanup & Verification
+# Step 6: Download Qwen2.5-72B-AWQ Model
+# ============================================
+echo "[6/6] Downloading Qwen2.5-72B-AWQ model..."
+echo "       This is a large model (~145GB), may take 20-30 minutes"
+echo ""
+
+# Ensure huggingface-cli is available
+if ! command -v huggingface-cli &> /dev/null; then
+    echo "⚠ huggingface-cli not found in PATH, trying to locate..."
+
+    # Find huggingface-cli in Python site-packages
+    HF_CLI_PATH=$(python3 -c "import sys; import os; paths=[os.path.join(p, 'bin', 'huggingface-cli') for p in sys.path if 'site-packages' in p]; print(next((p for p in paths if os.path.exists(p)), ''))" 2>/dev/null)
+
+    if [ -n "$HF_CLI_PATH" ]; then
+        echo "✓ Found huggingface-cli at: $HF_CLI_PATH"
+        alias huggingface-cli="$HF_CLI_PATH"
+    else
+        echo "✗ huggingface-cli not found, reinstalling huggingface-hub..."
+        pip install --break-system-packages --force-reinstall 'huggingface-hub>=0.23.0,<0.30.0'
+
+        # Try system-wide installation if still not found
+        if ! command -v huggingface-cli &> /dev/null; then
+            export PATH="$PATH:/usr/local/bin:$HOME/.local/bin"
+        fi
+    fi
+fi
+
+# Download the model
+if command -v huggingface-cli &> /dev/null || [ -n "$HF_CLI_PATH" ]; then
+    echo "Starting download..."
+
+    # Set environment variable for faster downloads
+    export HF_HUB_ENABLE_HF_TRANSFER=1
+
+    # Download with progress
+    ${HF_CLI_PATH:-huggingface-cli} download Qwen/Qwen2.5-72B-Instruct-AWQ \
+        --local-dir /workspace/huggingface_cache/Qwen2.5-72B-AWQ \
+        --local-dir-use-symlinks False
+
+    echo "✓ Qwen2.5-72B-AWQ downloaded successfully!"
+else
+    echo "⚠ WARNING: Could not find huggingface-cli"
+    echo "   Model download skipped. You can download manually later with:"
+    echo "   huggingface-cli download Qwen/Qwen2.5-72B-Instruct-AWQ \\"
+    echo "     --local-dir /workspace/huggingface_cache/Qwen2.5-72B-AWQ \\"
+    echo "     --local-dir-use-symlinks False"
+fi
+
+# ============================================
+# Installation Complete
 # ============================================
 echo ""
 echo "============================================"
-echo "Installation Complete!"
+echo "Installation Complete! 🎬"
 echo "============================================"
 echo ""
-echo "Installed package versions:"
-pip show vllm torch transformers tokenizers numpy huggingface-hub diffusers whisper-ctranslate2 TTS | grep -E "Name|Version"
-
+echo "Installed Components:"
+echo "  ✓ PyTorch 2.5.1 + CUDA 12.4"
+echo "  ✓ vLLM 0.6.6.post1 (Qwen 72B AWQ support)"
+echo "  ✓ Transformers 4.45.2 + Tokenizers 0.20.3"
+echo "  ✓ Diffusers + SDXL Lightning"
+echo "  ✓ Coqui TTS (Korean voice synthesis)"
+echo "  ✓ Whisper-CTranslate2 (Korean STT)"
+echo "  ✓ xFormers (memory-efficient attention)"
 echo ""
-echo "✓ vLLM 0.6.6.post1"
-echo "✓ Torch 2.5.1 + cu124"
-echo "✓ Transformers 4.45.2"
-echo "✓ Tokenizers 0.20.3"
-echo "✓ whisper-ctranslate2"
-echo "✓ diffusers + SDXL Lightning"
-echo "✓ TTS (Coqui)"
+echo "Model Cache: /workspace/huggingface_cache"
+echo "Output Directory: /workspace/outputs"
 echo ""
-echo "Model cache: /workspace/huggingface_cache"
-echo "Output directory: /workspace/output"
+echo "To run AutoDrama:"
+echo "  cd /workspace/AutoDrama"
+echo "  python main.py"
 echo ""
-echo "Ready to run AutoDrama! 🎬"
+echo "To test individual components:"
+echo "  python test_outline.py \"할머니의 비밀 일기장\""
+echo "  python test_part_v3.py \"할머니의 비밀 일기장\""
+echo ""
+echo "Ready to generate 2-hour Korean dramas! 🎭"
