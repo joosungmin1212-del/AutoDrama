@@ -15,7 +15,7 @@
 
 - 📝 **자동 대본 생성**: Qwen 2.5 72B AWQ를 사용한 고품질 한국어 드라마 대본
 - 🎨 **이미지 생성**: SDXL Lightning을 사용한 빠른 이미지 생성 (4 steps)
-- 🎤 **음성 합성**: OpenVoice를 사용한 자연스러운 한국어 음성 (Python 3.12 호환)
+- 🎤 **음성 합성**: Coqui TTS를 사용한 자연스러운 한국어 음성
 - 📝 **자막 생성**: Whisper large-v3를 사용한 정확한 자막
 - 🎬 **영상 합성**: FFmpeg을 사용한 전문가급 비디오 편집
 
@@ -32,9 +32,9 @@
 - **최적화**: xFormers memory efficient attention
 
 ### TTS
-- **모델**: OpenVoice v2
+- **모델**: Coqui TTS (tts_models/ko/cv/vits)
 - **언어**: 한국어 전용
-- **특징**: Python 3.12 완전 호환, 감정 제어 지원
+- **특징**: 자연스러운 음성 합성
 
 ### STT
 - **모델**: Whisper large-v3 (whisper-ctranslate2)
@@ -47,10 +47,10 @@
 - **VRAM**: 최소 40GB
   - vLLM (Qwen 72B AWQ): ~18-20GB
   - SDXL Lightning: ~6-8GB
-  - OpenVoice TTS: ~2-3GB
+  - Coqui TTS: ~2-3GB
   - Whisper: ~3-4GB
 - **CUDA**: 12.4+
-- **Python**: 3.11+ (3.12 권장)
+- **Python**: 3.10 or 3.11 (Coqui TTS requires Python ≤3.11)
 
 ### 로컬 환경
 - **시스템 RAM**: 64GB+ 권장
@@ -173,7 +173,7 @@ AutoDrama/
 ├── pipeline/                 # 파이프라인 모듈
 │   ├── llm.py                # LLM 엔진 (vLLM + 72B 최적화)
 │   ├── image.py              # 이미지 생성 (SDXL Lightning)
-│   ├── tts.py                # TTS 생성 (OpenVoice)
+│   ├── tts.py                # TTS 생성 (Coqui TTS)
 │   ├── subtitle.py           # 자막 생성 (Whisper)
 │   └── video.py              # 비디오 합성 (FFmpeg)
 │

@@ -4,8 +4,7 @@
 models:
   llm: "Qwen/Qwen2.5-72B-Instruct-AWQ"
   image: "ByteDance/SDXL-Lightning"
-  tts: "openvoice"  # OpenVoice v2 (Python 3.12 compatible)
-  tts_checkpoint: "checkpoints_v2/converter"  # OpenVoice checkpoint path
+  tts: "tts_models/ko/cv/vits"  # Coqui TTS Korean model
   whisper: "large-v3"
 
   # HuggingFace 캐시 디렉토리
@@ -55,13 +54,13 @@ image:
   hook_images: 5
   main_images: 15
 
-# TTS 파라미터 (OpenVoice)
+# TTS 파라미터 (Coqui TTS)
 tts:
-  model: "openvoice"
-  sample_rate: 24000  # OpenVoice default
+  model: "tts_models/ko/cv/vits"
+  sample_rate: 22050  # Coqui TTS default
   chunk_size: 500  # Max characters per synthesis
-  speaker: "default"  # OpenVoice speaker
-  language: "ko"  # Korean
+  speaker: null  # No speaker for single-speaker models
+  language: null  # Language auto-detected for Korean model
 
 # Whisper 파라미터
 whisper:

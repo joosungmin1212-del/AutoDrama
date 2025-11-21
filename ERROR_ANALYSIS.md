@@ -13,7 +13,7 @@
 | **2** | `RuntimeError: operator torchvision::nms does not exist` | vLLM 0.6.6.post1이 torchvision 0.20.1 필요하지만 requirements에 명시 안됨 | vLLM 실행 시 | torchvision==0.20.1 명시적 설치 (Step 2) | ✅ 해결 |
 | **3** | `ImportError: tokenizers>=0.22.0,<=0.23.0 is required ... but found tokenizers==0.20.3` | transformers 4.45.2의 설치 시점 요구사항과 런타임 요구사항 불일치 (dependency drift) | transformers 임포트 시 | tokenizers>=0.19.1,<0.24.0으로 범위 확대 | ✅ 해결 |
 | **4** | `ImportError: huggingface-hub>=0.34.0,<1.0 is required ... but found huggingface-hub==0.29.3` | transformers 4.45.2 런타임 요구사항 변경 + tokenizers 업그레이드 연쇄 효과 | transformers 임포트 시 | huggingface-hub>=0.34.0,<1.0.0으로 업그레이드 | ✅ 해결 |
-| **5** | `ERROR: No matching distribution found for TTS>=0.22.0` | Coqui TTS는 Python 3.12 wheels 미제공 → 설치 불가능 | `pip install -r requirements.txt` 실행 중 (Step 3) | OpenVoice로 교체 (Python 3.12 완전 지원) | ✅ 해결 |
+| **5** | `ERROR: No matching distribution found for TTS>=0.22.0` | Coqui TTS는 Python 3.12 wheels 미제공 → 설치 불가능 | `pip install -r requirements.txt` 실행 중 (Step 3) | Python 3.10 or 3.11 사용 필수 | ⚠️ Python 버전 요구사항 |
 
 ---
 
@@ -28,7 +28,7 @@
 | **vLLM** | 0.6.6.post1 | torchvision==0.20.1 | (명시 안됨) | 공식 requirements.txt에 누락됨 | 🟡 High |
 | **transformers** | 4.45.2 | tokenizers>=0.22.0 (runtime) | vLLM (설치 시점) | 설치 시점에는 tokenizers>=0.20.0,<0.21.0 요구 | 🟡 High |
 | **transformers** | 4.45.2 | huggingface-hub>=0.34.0 (runtime) | 이전 버전 transformers | 설치 시점에는 huggingface-hub>=0.23.0,<0.30.0 요구 | 🟡 High |
-| **Coqui TTS** | 0.22.0 | Python>=3.11, wheels available | RunPod Python 3.12 | Coqui TTS는 Python 3.12 wheels 미제공 → OpenVoice로 교체 | ✅ 해결됨 |
+| **Coqui TTS** | 0.22.0 | Python 3.10 or 3.11 | RunPod Python 3.12 | Coqui TTS는 Python 3.12 wheels 미제공 → **Python 3.10/3.11 필수** | ⚠️ Python 버전 제약 |
 | **blinker** | 1.4 (distutils) | (시스템 패키지) | TTS>=0.22.0 | TTS가 blinker>=1.6.2 필요, distutils 패키지 제거 불가 | 🟡 High |
 
 ### 2.2 의존성 체인 (검증된 작동 버전)
@@ -52,9 +52,10 @@ SDXL Lightning
 ├── safetensors>=0.4.0,<1.0.0 ✅
 └── invisible-watermark>=0.2.0,<1.0.0 ✅
 
-TTS (OpenVoice) ✅ 해결됨
-├── Python 3.12 완전 지원 ✅
-└── Python 3.11+ 호환 ✅
+TTS (Coqui TTS) ⚠️ Python 버전 제약
+├── Python 3.10 ✅
+├── Python 3.11 ✅
+└── Python 3.12 ❌ (No wheels available)
 
 Whisper-CTranslate2
 └── tokenizers>=0.19.1,<0.24.0 ✅ (faster-whisper 대신 사용)
@@ -221,7 +222,7 @@ huggingface-hub>=0.34.0,<1.0.0  # 런타임 요구 만족
 
 ---
 
-### 에러 #5: Coqui TTS + Python 3.12 비호환 ✅ 해결됨
+### 에러 #5: Coqui TTS + Python 3.12 비호환 ⚠️ Python 버전 제약
 
 **전체 에러 메시지**:
 ```
@@ -237,30 +238,39 @@ ERROR: No matching distribution found for TTS<0.23.0,>=0.22.0
 **근본 원인**:
 - Coqui TTS 프로젝트는 Python 3.12용 wheel 빌드 안 함
 - `pip install TTS`가 source distribution 빌드 시도 → 실패
-- Python 3.10/3.11에서도 wheel 제공 제한적
+- Python 3.10/3.11에서만 wheel 제공
 
-**해결 방법 - OpenVoice로 완전 교체**:
+**해결 방법 - Python 버전 다운그레이드 필수**:
 
-| 항목 | Coqui TTS (이전) | OpenVoice (신규) |
-|------|----------------|-----------------|
-| **Python 지원** | 3.10, 3.11 (wheels 제한적) | **3.11, 3.12 완전 지원** |
-| **한국어 품질** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
-| **감정 제어** | 제한적 | **지원** |
-| **속도** | 중간 | 빠름 |
-| **VRAM** | ~2-3GB | ~2-3GB |
-| **설치** | 복잡 (빌드 필요) | **간단 (pip install)** |
+| 방법 | Python 버전 | Coqui TTS 설치 | 프로젝트 영향 |
+|------|------------|--------------|------------|
+| **Option 1: Python 3.11** | 3.11.x | ✅ 완전 지원 | ✅ 권장 (모든 패키지 호환) |
+| **Option 2: Python 3.10** | 3.10.x | ✅ 완전 지원 | ✅ 안정적 (검증됨) |
+| **Option 3: Python 3.12** | 3.12.x | ❌ 불가능 | ❌ Coqui TTS 설치 불가 |
 
-**적용 변경사항**:
-1. **requirements.txt**: `TTS>=0.22.0` → `openvoice>=0.1.0`
-2. **pipeline/tts.py**: 완전 재작성 (OpenVoice API 사용)
-3. **config.yaml**: TTS 설정 업데이트
-4. **main.py**: 기본 TTS 모델 변경
+**RunPod에서 Python 버전 변경 방법**:
 
-**위험도**: 🟢 Low
-- OpenVoice는 Python 3.12 완전 호환
-- 한국어 품질 더 우수
-- 감정 제어 기능 추가
-- 설치 안정성 향상
+1. **템플릿 변경** (권장):
+   - RunPod 템플릿 선택 시 Python 3.11 또는 3.10 버전 선택
+   - 예: `runpod/pytorch:2.1.0-py3.11-cuda12.1.0-devel-ubuntu22.04`
+
+2. **수동 설치** (비권장):
+   ```bash
+   apt-get update
+   apt-get install -y python3.11 python3.11-venv python3.11-dev
+   update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+   ```
+
+**적용된 변경사항** (Python 3.10/3.11 기준):
+1. **requirements.txt**: `TTS>=0.22.0,<0.23.0` (Coqui TTS)
+2. **pipeline/tts.py**: Coqui TTS API 사용
+3. **config.yaml**: `tts: "tts_models/ko/cv/vits"`
+4. **README.md**: Python 3.10 or 3.11 요구사항 명시
+
+**위험도**: 🟡 Medium
+- Python 버전 다운그레이드 필요
+- RunPod 템플릿 재선택 또는 수동 설치 필요
+- Coqui TTS는 Python 3.10/3.11에서 안정적으로 작동
 
 ---
 

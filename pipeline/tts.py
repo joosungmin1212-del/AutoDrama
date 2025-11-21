@@ -1,73 +1,48 @@
 """
 TTS (Text-to-Speech) 모듈
-OpenVoice를 사용한 한국어 음성 합성 (Python 3.12 호환)
+Coqui TTS를 사용한 한국어 음성 합성
 """
 
 from pathlib import Path
+from TTS.api import TTS
 import os
 from typing import Optional
 import torch
-import numpy as np
 
 
 class TTSEngine:
     """
-    OpenVoice 기반 음성 합성 엔진
-    - Python 3.12 완전 지원
-    - 한국어 고품질 음성
-    - 감정 제어 지원
+    Coqui TTS 기반 음성 합성 엔진
     """
 
     def __init__(
         self,
-        model_name: str = "openvoice",
-        checkpoint_path: str = "checkpoints_v2/converter",
+        model_name: str = "tts_models/ko/cv/vits",
         device: str = "cuda" if torch.cuda.is_available() else "cpu"
     ):
         """
         TTS 엔진 초기화
 
         Args:
-            model_name: TTS 모델 이름 (openvoice)
-            checkpoint_path: OpenVoice 체크포인트 경로
+            model_name: TTS 모델 이름 (한국어 모델 권장)
             device: 디바이스 (cuda/cpu)
         """
-        print(f"Loading OpenVoice TTS model: {model_name}")
-        print(f"  Checkpoint: {checkpoint_path}")
+        print(f"Loading TTS model: {model_name}")
         print(f"  Device: {device}")
 
         try:
-            from openvoice import se_extractor
-            from openvoice.api import ToneColorConverter
-
             self.device = device
-            self.checkpoint_path = checkpoint_path
-
-            # OpenVoice ToneColorConverter 초기화
-            self.converter = ToneColorConverter(
-                f'{checkpoint_path}/config.json',
-                device=device
-            )
-            self.converter.load_ckpt(f'{checkpoint_path}/checkpoint.pth')
-
-            # Base Speaker 초기화
-            from openvoice.api import BaseSpeakerTTS
-            self.base_speaker = BaseSpeakerTTS(
-                model_path='checkpoints_v2/base_speakers/KO',
-                device=device
-            )
-
-            print("✓ OpenVoice TTS model loaded successfully!")
-
+            self.tts = TTS(model_name=model_name).to(device)
+            print("✓ TTS model loaded successfully!")
         except Exception as e:
-            raise RuntimeError(f"OpenVoice 모델 로드 실패: {model_name}\n오류: {e}")
+            raise RuntimeError(f"TTS 모델 로드 실패: {model_name}\n오류: {e}")
 
     def synthesize(
         self,
         text: str,
         output_path: str,
         speaker: Optional[str] = None,
-        language: Optional[str] = "ko"
+        language: Optional[str] = None
     ) -> str:
         """
         텍스트를 음성으로 합성
@@ -75,8 +50,8 @@ class TTSEngine:
         Args:
             text: 합성할 텍스트
             output_path: 출력 파일 경로 (.wav)
-            speaker: 화자 (OpenVoice speaker)
-            language: 언어 (기본: ko)
+            speaker: 화자 (모델에 따라 다름)
+            language: 언어 (모델에 따라 다름)
 
         Returns:
             생성된 오디오 파일 경로
@@ -90,38 +65,13 @@ class TTSEngine:
         print(f"Synthesizing: {text[:50]}...")
 
         try:
-            # OpenVoice TTS 생성
-            # 1단계: Base speaker로 음성 생성
-            temp_audio = str(Path(output_path).parent / "temp_base.wav")
-
-            self.base_speaker.tts(
+            # TTS 생성
+            self.tts.tts_to_file(
                 text=text,
-                output_path=temp_audio,
-                speaker='default',
-                language='Korean'
+                file_path=output_path,
+                speaker=speaker,
+                language=language
             )
-
-            # 2단계: Tone color 변환 (선택적)
-            if speaker and speaker != "default":
-                # 커스텀 speaker가 있으면 tone color 변환 적용
-                target_se = torch.load(f'checkpoints_v2/speakers/{speaker}.pth',
-                                      map_location=self.device)
-
-                self.converter.convert(
-                    audio_src_path=temp_audio,
-                    src_se=self.base_speaker.se,
-                    tgt_se=target_se,
-                    output_path=output_path,
-                    message="@MyShell"
-                )
-
-                # 임시 파일 삭제
-                if os.path.exists(temp_audio):
-                    os.remove(temp_audio)
-            else:
-                # Default speaker는 base speaker 그대로 사용
-                import shutil
-                shutil.move(temp_audio, output_path)
 
             # 파일 생성 확인
             if not Path(output_path).exists():
@@ -273,7 +223,7 @@ def merge_audio_files(input_files: list, output_file: str):
 def generate_tts(
     text: str,
     output_path: str,
-    model_name: str = "openvoice",
+    model_name: str = "tts_models/ko/cv/vits",
     chunk_size: int = 500
 ) -> str:
     """
@@ -282,7 +232,7 @@ def generate_tts(
     Args:
         text: 입력 텍스트
         output_path: 출력 파일 경로
-        model_name: TTS 모델 (openvoice)
+        model_name: TTS 모델
         chunk_size: 긴 텍스트 청크 크기
 
     Returns:
@@ -309,12 +259,12 @@ def generate_tts(
 _tts_engine = None
 
 
-def get_tts_engine(model_name: str = "openvoice") -> TTSEngine:
+def get_tts_engine(model_name: str = "tts_models/ko/cv/vits") -> TTSEngine:
     """
     TTS 엔진 싱글톤 접근
 
     Args:
-        model_name: TTS 모델 이름 (openvoice)
+        model_name: TTS 모델 이름
 
     Returns:
         TTSEngine 인스턴스
