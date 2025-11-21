@@ -172,8 +172,24 @@ pip install --ignore-installed TTS>=0.22.0
 
 ### Issue 3: distutils blinker
 **Problem**: RunPod has system-installed blinker 1.4 via distutils
-**Error**: `Cannot uninstall blinker 1.4`
-**Solution**: Use `--ignore-installed` flag (already implemented)
+**Error**: `Cannot uninstall blinker 1.4 - It is a distutils installed project`
+**Solution**: Auto-detect and remove distutils blinker, then retry installation
+**Implementation**:
+```bash
+# Step 3: Attempt normal installation first
+if ! pip install --break-system-packages -r requirements.txt; then
+    # If blinker conflict detected, remove distutils version
+    if grep -q "Cannot uninstall blinker"; then
+        rm -rf /usr/lib/python3*/dist-packages/blinker*
+        # Retry installation
+        pip install --break-system-packages -r requirements.txt
+    fi
+fi
+```
+**Advantages**:
+- Maintains full dependency resolution (no `--ignore-installed` needed)
+- PyTorch not reinstalled (preserves CUDA version)
+- Only activates when actual conflict occurs
 
 ### Issue 4: AWQ + Tensor Parallelism
 **Problem**: Qwen2.5-72B-AWQ unstable with TP>1
@@ -225,6 +241,7 @@ nvidia-smi
 | 2025-01-22 | Updated tokenizers to >=0.19.1,<0.24.0 | Fix dependency drift |
 | 2025-01-22 | Updated huggingface-hub to >=0.34.0 | Fix runtime requirement |
 | 2025-01-22 | Pinned xformers to 0.0.28.post3 | vLLM official requirement |
+| 2025-01-22 | Added blinker auto-removal logic | Fix distutils conflict without --ignore-installed |
 
 ---
 

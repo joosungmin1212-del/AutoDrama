@@ -42,7 +42,30 @@ echo "[3/6] Installing all Python dependencies from requirements.txt..."
 echo "       This will automatically resolve version conflicts"
 
 # Use pip's dependency resolver with requirements.txt as single source of truth
-pip install --break-system-packages -r requirements.txt
+# If installation fails due to distutils blinker, remove it and retry
+if ! pip install --break-system-packages -r requirements.txt 2>&1 | tee /tmp/pip_install.log; then
+    if grep -q "Cannot uninstall blinker" /tmp/pip_install.log; then
+        echo ""
+        echo "⚠️  Installation failed due to distutils-installed blinker conflict"
+        echo "🔧 Auto-fixing: Removing distutils blinker..."
+
+        # Remove distutils-installed blinker (all possible locations)
+        rm -rf /usr/lib/python3/dist-packages/blinker* 2>/dev/null || true
+        rm -rf /usr/lib/python3.*/dist-packages/blinker* 2>/dev/null || true
+        rm -rf /usr/local/lib/python3/dist-packages/blinker* 2>/dev/null || true
+        rm -rf /usr/local/lib/python3.*/dist-packages/blinker* 2>/dev/null || true
+
+        echo "🔄 Retrying installation..."
+        pip install --break-system-packages -r requirements.txt
+    else
+        echo ""
+        echo "✗ Installation failed for unknown reason. Check logs above."
+        exit 1
+    fi
+fi
+
+# Clean up temporary log
+rm -f /tmp/pip_install.log
 
 # ============================================
 # Step 4: Verify and Auto-Fix Critical Package Versions
