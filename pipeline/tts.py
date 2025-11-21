@@ -30,10 +30,12 @@ class TTSEngine:
         print(f"Loading TTS model: {model_name}")
         print(f"  Device: {device}")
 
-        self.device = device
-        self.tts = TTS(model_name=model_name).to(device)
-
-        print("✓ TTS model loaded successfully!")
+        try:
+            self.device = device
+            self.tts = TTS(model_name=model_name).to(device)
+            print("✓ TTS model loaded successfully!")
+        except Exception as e:
+            raise RuntimeError(f"TTS 모델 로드 실패: {model_name}\n오류: {e}")
 
     def synthesize(
         self,
@@ -54,21 +56,32 @@ class TTSEngine:
         Returns:
             생성된 오디오 파일 경로
         """
+        if not text or not text.strip():
+            raise ValueError("TTS 생성 실패: 텍스트가 비어있습니다")
+
         # 출력 디렉토리 생성
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         print(f"Synthesizing: {text[:50]}...")
 
-        # TTS 생성
-        self.tts.tts_to_file(
-            text=text,
-            file_path=output_path,
-            speaker=speaker,
-            language=language
-        )
+        try:
+            # TTS 생성
+            self.tts.tts_to_file(
+                text=text,
+                file_path=output_path,
+                speaker=speaker,
+                language=language
+            )
 
-        print(f"  ✓ Saved: {output_path}")
-        return output_path
+            # 파일 생성 확인
+            if not Path(output_path).exists():
+                raise RuntimeError(f"TTS 파일이 생성되지 않았습니다: {output_path}")
+
+            print(f"  ✓ Saved: {output_path}")
+            return output_path
+
+        except Exception as e:
+            raise RuntimeError(f"TTS 합성 실패: {text[:50]}...\n오류: {e}")
 
     def synthesize_long_text(
         self,
@@ -113,22 +126,35 @@ class TTSEngine:
         temp_dir.mkdir(exist_ok=True)
 
         temp_files = []
-        for i, chunk in enumerate(chunks):
-            temp_file = temp_dir / f"chunk_{i:03d}.wav"
-            self.synthesize(chunk, str(temp_file), speaker=speaker)
-            temp_files.append(str(temp_file))
+        try:
+            for i, chunk in enumerate(chunks):
+                temp_file = temp_dir / f"chunk_{i:03d}.wav"
+                self.synthesize(chunk, str(temp_file), speaker=speaker)
+                temp_files.append(str(temp_file))
 
-        # FFmpeg로 병합
-        print("Merging audio chunks...")
-        merge_audio_files(temp_files, output_path)
+            # FFmpeg로 병합
+            print("Merging audio chunks...")
+            merge_audio_files(temp_files, output_path)
 
-        # 임시 파일 삭제
-        for temp_file in temp_files:
-            os.remove(temp_file)
-        temp_dir.rmdir()
+            print(f"✓ Long text synthesis complete: {output_path}")
+            return output_path
 
-        print(f"✓ Long text synthesis complete: {output_path}")
-        return output_path
+        except Exception as e:
+            raise RuntimeError(f"긴 텍스트 TTS 생성 실패 (청크 {len(temp_files)}/{len(chunks)})\n오류: {e}")
+
+        finally:
+            # 임시 파일 삭제 (성공/실패 무관)
+            for temp_file in temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except:
+                    pass
+            try:
+                if temp_dir.exists():
+                    temp_dir.rmdir()
+            except:
+                pass
 
 
 def split_sentences(text: str) -> list:
