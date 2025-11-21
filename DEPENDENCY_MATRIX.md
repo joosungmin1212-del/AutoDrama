@@ -65,10 +65,12 @@ This configuration has been researched and verified from vLLM 0.6.6.post1 offici
 
 | Package | Version | Source | Notes |
 |---------|---------|--------|-------|
-| **TTS** | >=0.22.0,<0.23.0 | - | Coqui TTS (Korean VITS) |
+| **openvoice** | >=0.1.0,<1.0.0 | - | OpenVoice v2 (Python 3.12 compatible Korean TTS) |
 | **whisper-ctranslate2** | >=0.4.3,<1.0.0 | - | Korean STT (CTranslate2 backend) |
 
-⚠️ **IMPORTANT**: Do **NOT** use `faster-whisper` - it requires `tokenizers<0.16` which conflicts with transformers 4.45.2.
+⚠️ **IMPORTANT**:
+- Do **NOT** use `faster-whisper` - it requires `tokenizers<0.16` which conflicts with transformers 4.45.2
+- Do **NOT** use `Coqui TTS` - no Python 3.12 wheels available
 
 ### Utilities
 
@@ -83,6 +85,7 @@ This configuration has been researched and verified from vLLM 0.6.6.post1 offici
 
 | Package | Reason | Alternative |
 |---------|--------|-------------|
+| **Coqui TTS** | No Python 3.12 wheels available | Use `openvoice>=0.1.0` |
 | **faster-whisper** | Requires `tokenizers<0.16` | Use `whisper-ctranslate2>=0.4.3` |
 | **numpy 2.x** | vLLM incompatible | Pin to `numpy>=1.26.0,<2.0.0` |
 | **diffusers 0.30+** | Requires numpy 2.x | Pin to `diffusers>=0.27.0,<0.30.0` |
@@ -149,7 +152,7 @@ pip install --ignore-installed TTS>=0.22.0
 |-----------|------------|-------|
 | **vLLM (Qwen 72B AWQ)** | ~18-20GB | 4-bit quantization, TP=1 |
 | **SDXL Lightning** | ~6-8GB | 4-step inference |
-| **TTS (Coqui VITS)** | ~2-3GB | Korean voice synthesis |
+| **OpenVoice TTS** | ~2-3GB | Korean voice synthesis (Python 3.12) |
 | **Whisper large-v3** | ~3-4GB | Korean STT |
 | **System overhead** | ~5-10GB | PyTorch, CUDA, etc. |
 | **Total** | **~40-50GB** | **80GB GPU recommended** (A100 80GB, H100) |

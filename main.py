@@ -48,7 +48,7 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
                 "parts": {"temperature": 0.70, "max_tokens": 5000, "top_p": 0.92, "top_k": 40, "repetition_penalty": 1.13}
             },
             "image": {"batch_size": 4, "steps": 4},
-            "tts": {"model": "tts_models/ko/cv/vits", "chunk_size": 500},
+            "tts": {"model": "openvoice", "chunk_size": 500},
             "whisper": {"model": "large-v3"},
             "google_drive": {"enabled": False}
         }
