@@ -12,9 +12,9 @@ from typing import Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 프롬프트 모듈
-from prompts.outline import generate_outline_prompt
+from prompts.outline_v2_final import generate_outline_prompt
 from prompts.hook import generate_hook_prompt
-from prompts.part import generate_part_prompt
+from prompts.part_v3 import generate_part_v3_prompt
 from prompts.hook_images import generate_hook_images_prompt
 from prompts.main_images import generate_main_images_prompt
 
@@ -32,6 +32,7 @@ from utils.file_utils import (
     create_output_dirs
 )
 from utils.logger import setup_logger, PhaseLogger
+from utils.context_generator import create_part_context
 
 
 def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
@@ -139,45 +140,43 @@ def main(title: str) -> None:
         phase_logger.end_phase(4, "Hook Images Generation")
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # Phase 5: Parts 1-4 생성 (병렬) (2.5분)
+        # Phase 5: Parts 1-4 생성 (순차 + Context) (2.5분)
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        phase_logger.start_phase(5, "Parts 1-4 Generation (Parallel)")
+        phase_logger.start_phase(5, "Parts 1-4 Generation (Sequential with Context)")
 
-        previous_parts = []
         parts_text = []
+        current_context = None
 
-        # 병렬 생성
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = []
+        # 순차 생성 (Part 1 → 2 → 3 → 4)
+        for part_num in range(1, 5):
+            phase_logger.info(f"Generating Part {part_num}...")
 
-            for part_num in range(1, 5):
-                part_prompt = generate_part_prompt(
-                    title,
-                    outline_data["outline_full"],
-                    previous_parts if previous_parts else None
+            # Part V3 프롬프트 생성
+            part_prompt = generate_part_v3_prompt(
+                part_number=part_num,
+                outline_data=outline_data,
+                context=current_context
+            )
+
+            # LLM 호출
+            part_text = llm.call_llm_text(part_prompt, "parts")
+            parts_text.append(part_text)
+
+            # Part 저장
+            save_text(part_text, f"{dirs['main']}/part{part_num}.txt")
+            phase_logger.info(f"Part {part_num} completed: {len(part_text)} chars")
+
+            # Part 1-3은 다음 Part를 위한 Context 생성
+            if part_num < 4:
+                phase_logger.info(f"Creating context for Part {part_num + 1}...")
+                current_context = create_part_context(
+                    part_text=part_text,
+                    part_number=part_num,
+                    outline_data=outline_data
                 )
-
-                # 각 Part를 병렬로 제출
-                future = executor.submit(
-                    llm.call_llm_text,
-                    part_prompt,
-                    "parts"
-                )
-                futures.append((part_num, future))
-
-            # 결과 수집 (순서 보장)
-            for part_num, future in sorted(futures, key=lambda x: x[0]):
-                part_text = future.result()
-                parts_text.append(part_text)
-
-                # Part 저장
-                save_text(part_text, f"{dirs['main']}/part{part_num}.txt")
-                phase_logger.info(f"Part {part_num} completed: {len(part_text)} chars")
-
-                # Part 1-3은 요약 생성 (다음 Part를 위해)
-                if part_num < 4:
-                    summary = part_text[:500] + "..."  # 간단한 요약
-                    previous_parts.append(summary)
+                # Context 저장 (디버깅용)
+                save_json(current_context, f"{dirs['main']}/part{part_num}_context.json")
+                phase_logger.info(f"Context created: {len(current_context.get('summary', ''))} chars summary")
 
         # Main 전체 병합
         main_full = "\n\n".join(parts_text)
@@ -192,9 +191,9 @@ def main(title: str) -> None:
         phase_logger.start_phase(6, "Main Images Prompts")
 
         main_images_prompt = generate_main_images_prompt(
-            previous_parts[0] if len(previous_parts) > 0 else "",
-            previous_parts[1] if len(previous_parts) > 1 else "",
-            previous_parts[2] if len(previous_parts) > 2 else "",
+            parts_text[0] if len(parts_text) > 0 else "",
+            parts_text[1] if len(parts_text) > 1 else "",
+            parts_text[2] if len(parts_text) > 2 else "",
             parts_text[3] if len(parts_text) > 3 else ""
         )
         main_images_data = llm.call_llm(main_images_prompt, phase="outline")
