@@ -38,14 +38,14 @@ from utils.context_generator import create_part_context
 def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
     """설정 파일 로드"""
     if not Path(config_path).exists():
-        # 기본 설정 생성
+        # 기본 설정 생성 (72B 최적화)
         default_config = {
             "output": {"base_dir": "./output"},
             "logging": {"file": "./autodrama.log", "level": "INFO"},
             "llm": {
-                "outline": {"temperature": 0.7, "max_tokens": 4096},
-                "hook": {"temperature": 0.8, "max_tokens": 2048},
-                "parts": {"temperature": 0.75, "max_tokens": 16384}
+                "outline": {"temperature": 0.65, "max_tokens": 7000, "top_p": 0.92, "top_k": 40, "repetition_penalty": 1.13},
+                "hook": {"temperature": 0.75, "max_tokens": 2048, "top_p": 0.92, "top_k": 40, "repetition_penalty": 1.13},
+                "parts": {"temperature": 0.70, "max_tokens": 5000, "top_p": 0.92, "top_k": 40, "repetition_penalty": 1.13}
             },
             "image": {"batch_size": 4, "steps": 4},
             "tts": {"model": "tts_models/ko/cv/vits", "chunk_size": 500},
