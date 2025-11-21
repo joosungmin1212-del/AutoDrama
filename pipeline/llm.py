@@ -21,9 +21,9 @@ class LLMEngine:
         self,
         config_path: str = "config.yaml",
         model_path: Optional[str] = None,
-        max_model_len: int = 16384,
+        max_model_len: int = 8192,
         tensor_parallel_size: int = 1,
-        gpu_memory_utilization: float = 0.92
+        gpu_memory_utilization: float = 0.90
     ):
         """LLM 엔진 초기화"""
         # Config 로드
