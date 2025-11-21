@@ -53,7 +53,7 @@ pip install --break-system-packages "whisper-ctranslate2>=0.4.3"
 # 6) TTS - Coqui TTS
 # ============================================
 echo "[6/9] Installing TTS (Coqui)..."
-pip install --break-system-packages "TTS>=0.22.0"
+pip install --break-system-packages --ignore-installed "TTS>=0.22.0"
 
 # ============================================
 # 7) Image Generation - SDXL Lightning
