@@ -44,7 +44,7 @@ echo "       This will automatically resolve version conflicts"
 pip install --break-system-packages -r requirements.txt
 
 # ============================================
-# Step 4: Verify Critical Package Versions
+# Step 4: Verify and Auto-Fix Critical Package Versions
 # ============================================
 echo "[4/6] Verifying critical package versions..."
 
@@ -76,32 +76,59 @@ check_version "TTS" "(>=0.22.0)"
 check_version "whisper-ctranslate2" "(>=0.4.3)"
 check_version "xformers" "(>=0.0.23)"
 
-# Additional validation
+# Auto-repair known conflicts
 echo ""
-echo "Checking for known conflicts..."
+echo "Checking for known conflicts and auto-fixing..."
 
 NUMPY_VERSION=$(pip show numpy 2>/dev/null | grep "^Version:" | awk '{print $2}')
 if [[ "$NUMPY_VERSION" == 2.* ]]; then
     echo "✗ CRITICAL: numpy $NUMPY_VERSION detected (vLLM requires <2.0.0)"
-    echo "   Run: pip install --force-reinstall 'numpy>=1.26.0,<2.0.0'"
-    exit 1
+    echo "   🔧 Auto-fixing: Downgrading numpy to 1.26.x..."
+    pip install --break-system-packages --force-reinstall 'numpy>=1.26.0,<2.0.0' -q
+
+    # Re-check after fix
+    NUMPY_VERSION=$(pip show numpy 2>/dev/null | grep "^Version:" | awk '{print $2}')
+    if [[ "$NUMPY_VERSION" == 1.* ]]; then
+        echo "   ✓ Fixed: numpy $NUMPY_VERSION"
+    else
+        echo "   ✗ Auto-fix failed! Manual intervention required."
+        exit 1
+    fi
 fi
 
 HF_HUB_VERSION=$(pip show huggingface-hub 2>/dev/null | grep "^Version:" | awk '{print $2}')
 if [[ "$HF_HUB_VERSION" == 1.* ]]; then
     echo "✗ CRITICAL: huggingface-hub $HF_HUB_VERSION detected (transformers requires <1.0)"
-    echo "   Run: pip install --force-reinstall 'huggingface-hub>=0.23.0,<0.30.0'"
-    exit 1
+    echo "   🔧 Auto-fixing: Downgrading huggingface-hub to 0.29.x..."
+    pip install --break-system-packages --force-reinstall 'huggingface-hub>=0.23.0,<0.30.0' -q
+
+    # Re-check after fix
+    HF_HUB_VERSION=$(pip show huggingface-hub 2>/dev/null | grep "^Version:" | awk '{print $2}')
+    if [[ "$HF_HUB_VERSION" == 0.* ]]; then
+        echo "   ✓ Fixed: huggingface-hub $HF_HUB_VERSION"
+    else
+        echo "   ✗ Auto-fix failed! Manual intervention required."
+        exit 1
+    fi
 fi
 
 DIFFUSERS_VERSION=$(pip show diffusers 2>/dev/null | grep "^Version:" | awk '{print $2}')
 if [[ "$DIFFUSERS_VERSION" == 0.3* ]] || [[ "$DIFFUSERS_VERSION" == 0.4* ]]; then
     echo "✗ WARNING: diffusers $DIFFUSERS_VERSION may require numpy 2.x"
-    echo "   Recommended: diffusers <0.30.0"
+    echo "   🔧 Auto-fixing: Downgrading diffusers to 0.29.x..."
+    pip install --break-system-packages --force-reinstall 'diffusers>=0.27.0,<0.30.0' -q
+
+    # Re-check after fix
+    DIFFUSERS_VERSION=$(pip show diffusers 2>/dev/null | grep "^Version:" | awk '{print $2}')
+    if [[ "$DIFFUSERS_VERSION" == 0.2* ]]; then
+        echo "   ✓ Fixed: diffusers $DIFFUSERS_VERSION"
+    else
+        echo "   ⚠ Warning: diffusers $DIFFUSERS_VERSION (may still work)"
+    fi
 fi
 
 echo ""
-echo "✓ All critical packages validated!"
+echo "✓ All critical packages validated and fixed!"
 
 # ============================================
 # Step 5: Setup Model Cache Directories
@@ -124,49 +151,48 @@ echo "  - /workspace/outputs (Generated videos)"
 # ============================================
 echo "[6/6] Downloading Qwen2.5-72B-AWQ model..."
 echo "       This is a large model (~145GB), may take 20-30 minutes"
+echo "       Network interruptions are OK - download will resume automatically"
 echo ""
 
-# Ensure huggingface-cli is available
-if ! command -v huggingface-cli &> /dev/null; then
-    echo "⚠ huggingface-cli not found in PATH, trying to locate..."
+# Python-based download (more reliable than CLI)
+python3 << 'PYTHON_DOWNLOAD'
+import os
+from huggingface_hub import snapshot_download
 
-    # Find huggingface-cli in Python site-packages
-    HF_CLI_PATH=$(python3 -c "import sys; import os; paths=[os.path.join(p, 'bin', 'huggingface-cli') for p in sys.path if 'site-packages' in p]; print(next((p for p in paths if os.path.exists(p)), ''))" 2>/dev/null)
+cache_dir = "/workspace/huggingface_cache/Qwen2.5-72B-AWQ"
 
-    if [ -n "$HF_CLI_PATH" ]; then
-        echo "✓ Found huggingface-cli at: $HF_CLI_PATH"
-        alias huggingface-cli="$HF_CLI_PATH"
-    else
-        echo "✗ huggingface-cli not found, reinstalling huggingface-hub..."
-        pip install --break-system-packages --force-reinstall 'huggingface-hub>=0.23.0,<0.30.0'
+print(f"📥 Downloading to {cache_dir}...")
+print("   This may take 20-30 minutes depending on your connection...")
+print("   Progress will be shown below:")
+print("")
 
-        # Try system-wide installation if still not found
-        if ! command -v huggingface-cli &> /dev/null; then
-            export PATH="$PATH:/usr/local/bin:$HOME/.local/bin"
-        fi
-    fi
-fi
-
-# Download the model
-if command -v huggingface-cli &> /dev/null || [ -n "$HF_CLI_PATH" ]; then
-    echo "Starting download..."
-
-    # Set environment variable for faster downloads
-    export HF_HUB_ENABLE_HF_TRANSFER=1
-
-    # Download with progress
-    ${HF_CLI_PATH:-huggingface-cli} download Qwen/Qwen2.5-72B-Instruct-AWQ \
-        --local-dir /workspace/huggingface_cache/Qwen2.5-72B-AWQ \
-        --local-dir-use-symlinks False
-
-    echo "✓ Qwen2.5-72B-AWQ downloaded successfully!"
-else
-    echo "⚠ WARNING: Could not find huggingface-cli"
-    echo "   Model download skipped. You can download manually later with:"
-    echo "   huggingface-cli download Qwen/Qwen2.5-72B-Instruct-AWQ \\"
-    echo "     --local-dir /workspace/huggingface_cache/Qwen2.5-72B-AWQ \\"
-    echo "     --local-dir-use-symlinks False"
-fi
+try:
+    snapshot_download(
+        repo_id="Qwen/Qwen2.5-72B-Instruct-AWQ",
+        local_dir=cache_dir,
+        local_dir_use_symlinks=False,
+        resume_download=True,
+        max_workers=4
+    )
+    print("")
+    print("✓ Model download complete!")
+except KeyboardInterrupt:
+    print("")
+    print("⚠ Download interrupted by user.")
+    print("  Run this script again to resume from where you left off.")
+    exit(0)
+except Exception as e:
+    print("")
+    print(f"✗ Download failed: {e}")
+    print("")
+    print("You can manually resume download later with:")
+    print(f"  python3 -c \"from huggingface_hub import snapshot_download; \\")
+    print(f"    snapshot_download('Qwen/Qwen2.5-72B-Instruct-AWQ', \\")
+    print(f"      local_dir='{cache_dir}', \\")
+    print(f"      local_dir_use_symlinks=False, \\")
+    print(f"      resume_download=True)\"")
+    exit(1)
+PYTHON_DOWNLOAD
 
 # ============================================
 # Installation Complete
