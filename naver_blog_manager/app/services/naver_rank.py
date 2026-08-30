@@ -133,7 +133,7 @@ def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
     return items
 
 
-async def fetch_view_html(keyword: str, timeout_ms: int = 15000) -> str:
+async def fetch_view_html(keyword: str, timeout_ms: int = 20000) -> str:
     """Playwright(headless)로 VIEW 통합검색 결과 HTML을 가져온다."""
     # 지연 import: playwright가 설치되지 않은 환경(예: 유닛테스트만 도는 CI)에서도
     # 이 모듈의 parse_view_html 등은 문제없이 import/테스트 가능하게 하기 위함.
@@ -144,7 +144,18 @@ async def fetch_view_html(keyword: str, timeout_ms: int = 15000) -> str:
         browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page(user_agent=config.NAVER_USER_AGENT)
-            await page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            # 주의: wait_until="networkidle"는 쓰지 않는다. 네이버 검색결과 페이지는 광고/로깅용
+            # 백그라운드 요청이 끊임없이 발생해서 "네트워크가 완전히 조용해지는 시점"이 거의
+            # 오지 않는다 - 그래서 매번 타임아웃으로 실패하고, 그러면 이 조회는 아예 저장되지
+            # 않아 대시보드에 "확인 전"만 계속 남는다. 대신 DOM이 준비되면 바로 진행하고,
+            # 본문 컨테이너가 나타날 때까지 짧게만 추가로 기다린다(안 나타나도 계속 진행).
+            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                await page.wait_for_selector(
+                    ", ".join(MAIN_CONTAINER_SELECTORS[:-1]), timeout=5000
+                )
+            except Exception:  # noqa: BLE001
+                pass
             html = await page.content()
         finally:
             await browser.close()

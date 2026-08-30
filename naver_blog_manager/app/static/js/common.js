@@ -23,9 +23,13 @@ function showToast(message, isError = false) {
   el.style.background = isError ? "#e11d48" : "#1c2430";
   el.hidden = false;
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    el.hidden = true;
-  }, 3200);
+  // 오류 메시지는 원인 파악을 위해 읽을 시간이 필요하므로 훨씬 오래 띄워둔다.
+  toastTimer = setTimeout(
+    () => {
+      el.hidden = true;
+    },
+    isError ? 12000 : 3200
+  );
 }
 
 function escapeHtml(str) {
