@@ -1,0 +1,235 @@
+const OWNERSHIP_LABEL = {
+  ours_staff: "직원",
+  ours_experience: "체험단",
+  ours_company: "공식블로그",
+  other: "타업체",
+  empty: "미노출",
+};
+
+let dashboardData = { stats: null, keywords: [] };
+let currentFilter = "all";
+let searchText = "";
+
+async function loadDashboard() {
+  try {
+    dashboardData = await apiFetch("/api/dashboard/summary");
+  } catch (e) {
+    showToast(e.message, true);
+    return;
+  }
+  renderStats(dashboardData.stats);
+  renderFilterTabs(dashboardData.keywords, dashboardData.stats);
+  renderKeywordList();
+}
+
+function renderStats(stats) {
+  document.getElementById("stat-monitored").textContent = stats.monitored_keywords;
+  document.getElementById(
+    "stat-monitored-sub"
+  ).textContent = `개 등록 관리 중 · 이탈 알림 ${stats.open_alert_count}건`;
+
+  document.getElementById(
+    "stat-share"
+  ).innerHTML = `${stats.our_total} / ${stats.our_slots_total} <small>(${pct(
+    stats.our_total,
+    stats.our_slots_total
+  )}%)</small>`;
+  document.getElementById("stat-share-bar").style.width = `${pct(stats.our_total, stats.our_slots_total)}%`;
+
+  document.getElementById("stat-staff").textContent = stats.staff_exposure_count;
+  document.getElementById("stat-staff-sub").textContent = breakdownText(stats.staff_breakdown, "개 포스팅 노출 중");
+
+  document.getElementById("stat-experience").textContent = stats.experience_exposure_count;
+  document.getElementById("stat-experience-sub").textContent = breakdownText(
+    stats.experience_breakdown,
+    "개 후기 노출 중"
+  );
+}
+
+function pct(n, total) {
+  if (!total) return 0;
+  return Math.round((n / total) * 100);
+}
+
+function breakdownText(breakdown, suffix) {
+  const entries = Object.entries(breakdown || {});
+  if (entries.length === 0) return `${suffix}`;
+  const detail = entries.map(([name, count]) => `${name} ${count}건`).join(" · ");
+  return `${suffix} · ${detail}`;
+}
+
+function renderFilterTabs(keywords, stats) {
+  const container = document.getElementById("filter-tabs");
+  const categories = [...new Set(keywords.map((k) => k.category).filter(Boolean))];
+
+  let html = `<button class="filter-tab ${currentFilter === "all" ? "active" : ""}" data-filter="all">전체</button>`;
+  for (const cat of categories) {
+    html += `<button class="filter-tab ${currentFilter === cat ? "active" : ""}" data-filter="${escapeHtml(
+      cat
+    )}">${escapeHtml(cat)}</button>`;
+  }
+  html += `<button class="filter-tab filter-tab--alert ${
+    currentFilter === "alert" ? "active" : ""
+  }" data-filter="alert">이탈 알림 (${stats.open_alert_count})</button>`;
+
+  container.innerHTML = html;
+  container.querySelectorAll(".filter-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentFilter = btn.dataset.filter;
+      renderFilterTabs(dashboardData.keywords, dashboardData.stats);
+      renderKeywordList();
+    });
+  });
+}
+
+function renderKeywordList() {
+  const listEl = document.getElementById("kw-list");
+  let keywords = dashboardData.keywords;
+
+  if (currentFilter === "alert") {
+    keywords = keywords.filter((k) => k.has_open_alert);
+  } else if (currentFilter !== "all") {
+    keywords = keywords.filter((k) => k.category === currentFilter);
+  }
+  if (searchText.trim()) {
+    const q = searchText.trim().toLowerCase();
+    keywords = keywords.filter((k) => k.keyword.toLowerCase().includes(q));
+  }
+
+  if (keywords.length === 0) {
+    listEl.innerHTML = `<div class="empty-state">등록된 키워드가 없습니다. 우측 상단 "+ 키워드 추가"로 시작해보세요.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = keywords.map(renderKeywordCard).join("");
+
+  listEl.querySelectorAll("[data-action='refresh']").forEach((btn) => {
+    btn.addEventListener("click", () => refreshKeyword(Number(btn.dataset.id), btn));
+  });
+  listEl.querySelectorAll("[data-action='delete']").forEach((btn) => {
+    btn.addEventListener("click", () => deleteKeyword(Number(btn.dataset.id), btn.dataset.keyword));
+  });
+  listEl.querySelectorAll("[data-action='write']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      window.location.href = `/writer?keyword=${encodeURIComponent(btn.dataset.keyword)}`;
+    });
+  });
+}
+
+function renderKeywordCard(k) {
+  const pctVal = pct(k.our_count, k.total_slots);
+  const alertClass = k.has_open_alert ? "kw-card--alert" : "";
+  const dots = k.slots
+    .map((s) => {
+      const label = s.title ? `${OWNERSHIP_LABEL[s.ownership] || ""}${s.owner_name ? " · " + s.owner_name : ""}\n${s.title}` : "미노출";
+      return `<span class="rank-dot rank-dot--${s.ownership}" title="${escapeHtml(label)}">${s.position}</span>`;
+    })
+    .join("");
+
+  return `
+  <div class="kw-card ${alertClass}">
+    <div class="kw-ratio-box">${k.our_count}/${k.total_slots}</div>
+    <div class="kw-card__main">
+      <div class="kw-card__title-row">
+        <span class="kw-title">${escapeHtml(k.keyword)}</span>
+        ${k.category ? `<span class="badge badge-category">${escapeHtml(k.category)}</span>` : ""}
+        ${k.has_open_alert ? `<span class="badge badge-alert">⚠ 이탈 발생</span>` : ""}
+      </div>
+      <div class="kw-card__meta">최근 확인: ${formatDateTime(k.last_checked_at)}</div>
+      ${k.memo ? `<div class="kw-card__memo">${escapeHtml(k.memo)}</div>` : ""}
+    </div>
+    <div class="kw-card__right">
+      <div>
+        <div class="rank-dots">${dots}</div>
+        <div class="kw-ratio-text">TOP7 점유: ${k.our_count}/${k.total_slots} (${pctVal}%)</div>
+      </div>
+      <button class="icon-btn" data-action="refresh" data-id="${k.id}" title="순위 갱신">↻</button>
+      <button class="btn-write" data-action="write" data-keyword="${escapeHtml(k.keyword)}">✎ 글 작성</button>
+      <button class="icon-btn icon-btn--danger" data-action="delete" data-id="${k.id}" data-keyword="${escapeHtml(
+        k.keyword
+      )}" title="삭제">🗑</button>
+    </div>
+  </div>`;
+}
+
+async function refreshKeyword(id, btn) {
+  btn.textContent = "…";
+  btn.disabled = true;
+  try {
+    await apiFetch(`/api/keywords/${id}/refresh`, { method: "POST" });
+    showToast("순위를 갱신했습니다.");
+  } catch (e) {
+    showToast(e.message, true);
+  } finally {
+    await loadDashboard();
+  }
+}
+
+async function deleteKeyword(id, keyword) {
+  if (!confirm(`"${keyword}" 키워드를 삭제할까요? 조회 이력도 함께 삭제됩니다.`)) return;
+  try {
+    await apiFetch(`/api/keywords/${id}`, { method: "DELETE" });
+    showToast("키워드를 삭제했습니다.");
+    await loadDashboard();
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+function setupAddKeywordModal() {
+  const modal = document.getElementById("add-keyword-modal");
+  const openBtn = document.getElementById("add-keyword-btn");
+  const cancelBtn = document.getElementById("add-keyword-cancel");
+  const form = document.getElementById("add-keyword-form");
+
+  openBtn.addEventListener("click", () => (modal.hidden = false));
+  cancelBtn.addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    try {
+      await apiFetch("/api/keywords", {
+        method: "POST",
+        body: JSON.stringify({
+          keyword: fd.get("keyword"),
+          category: fd.get("category") || "",
+          memo: fd.get("memo") || "",
+        }),
+      });
+      form.reset();
+      modal.hidden = true;
+      showToast("키워드를 추가했습니다.");
+      await loadDashboard();
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  });
+}
+
+document.getElementById("search-input").addEventListener("input", (e) => {
+  searchText = e.target.value;
+  renderKeywordList();
+});
+
+document.getElementById("refresh-all-btn").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = "갱신 중...";
+  try {
+    const res = await apiFetch("/api/keywords/refresh-all", { method: "POST" });
+    showToast(`${res.checked}개 키워드 순위를 갱신했습니다.`);
+  } catch (e2) {
+    showToast(e2.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "↻ 전체 순위 갱신";
+    await loadDashboard();
+  }
+});
+
+setupAddKeywordModal();
+loadDashboard();

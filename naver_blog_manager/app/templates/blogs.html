@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}블로그 관리 - PT샵 네이버 블로그 매니저{% endblock %}
+{% block content %}
+
+<div class="page-card">
+  <h2 class="page-title">📇 블로그 등록</h2>
+  <p class="page-sub">공식 블로그 / 직원 블로그 / 체험단(서포터즈) 블로그를 등록하면, 대시보드에서 순위 안의 글이 누구 글인지 자동으로 표시됩니다.</p>
+
+  <form id="add-blog-form" style="display:grid; grid-template-columns: 1fr 2fr 1fr; gap:12px; align-items:end;">
+    <div class="field" style="margin:0;">
+      <label>이름</label>
+      <input type="text" name="name" placeholder="예: 원장 / 이수석 / 블로거 미니" required />
+    </div>
+    <div class="field" style="margin:0;">
+      <label>블로그 주소</label>
+      <input type="text" name="blog_url" placeholder="https://blog.naver.com/아이디" required />
+    </div>
+    <div class="field" style="margin:0;">
+      <label>구분</label>
+      <select name="role">
+        <option value="company">공식 블로그</option>
+        <option value="staff" selected>직원</option>
+        <option value="experience">체험단/서포터즈</option>
+      </select>
+    </div>
+    <div class="field" style="grid-column: 1 / -1; margin:0;">
+      <label>메모 (선택)</label>
+      <input type="text" name="memo" placeholder="예: 원장님 개인 블로그" />
+    </div>
+    <button type="submit" class="btn btn-primary" style="grid-column: 1 / -1; justify-content:center; padding:11px;">등록</button>
+  </form>
+</div>
+
+<div class="page-card">
+  <h2 class="page-title">등록된 블로그</h2>
+  <table class="simple-table">
+    <thead>
+      <tr>
+        <th>이름</th>
+        <th>구분</th>
+        <th>블로그 주소</th>
+        <th>블로그ID</th>
+        <th>메모</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="blog-table-body">
+      <tr><td colspan="6">불러오는 중...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+{% block extra_scripts %}
+<script src="/static/js/blogs.js"></script>
+{% endblock %}

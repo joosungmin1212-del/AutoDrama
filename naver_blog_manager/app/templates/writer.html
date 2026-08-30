@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}글쓰기 - PT샵 네이버 블로그 매니저{% endblock %}
+{% block content %}
+
+<div class="two-col">
+  <div class="page-card">
+    <h2 class="page-title">✎ AI 블로그 초안 생성</h2>
+    <p class="page-sub">제목만 입력하면 네이버 SEO 규칙에 맞춰 초안을 만들어드려요. 발행은 항상 직접 하셔야 합니다.</p>
+
+    <form id="generate-form">
+      <div class="field">
+        <label>제목</label>
+        <input type="text" name="title" id="title-input" placeholder="예: 서상동PT 웨이트 트레이닝의 자세교정이 되는 이유" required />
+      </div>
+      <div class="field">
+        <label>핵심 키워드 (선택 - 비우면 제목에서 추출)</label>
+        <input type="text" name="keyword" id="keyword-input" placeholder="예: 서상동PT" />
+      </div>
+      <div class="field">
+        <label>추가 요청사항 (선택)</label>
+        <textarea name="extra_request" rows="3" placeholder="예: 여성 회원 사례 위주로, 통증 완화 강조"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary" id="generate-btn" style="width:100%; justify-content:center; padding:11px;">
+        AI 초안 생성
+      </button>
+    </form>
+  </div>
+
+  <div class="page-card">
+    <h2 class="page-title">미리보기</h2>
+    <p class="page-sub">내용을 확인/수정한 뒤 네이버로 보내세요.</p>
+
+    <div id="seo-check-box" class="seo-check-list" style="margin-bottom:14px; display:none;"></div>
+
+    <div id="hashtag-box" style="margin-bottom:10px;"></div>
+
+    <textarea id="content-box" class="content-preview" style="width:100%; border:1px solid var(--border); border-radius:var(--radius-md);" placeholder="AI 초안 생성 버튼을 누르면 여기에 초안이 표시됩니다."></textarea>
+
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn btn-outline" id="copy-btn" style="flex:1; justify-content:center;">📋 복사하기</button>
+      <button class="btn btn-primary" id="send-btn" style="flex:1; justify-content:center;" disabled>네이버로 보내기</button>
+    </div>
+    <p class="page-sub" style="margin-top:10px;">
+      "네이버로 보내기"는 네이버 블로그 글쓰기 화면을 열고 제목/본문을 채워넣기만 합니다. 발행 버튼은 직접 눌러주세요.
+    </p>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_scripts %}
+<script src="/static/js/writer.js"></script>
+{% endblock %}

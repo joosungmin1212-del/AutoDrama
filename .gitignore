@@ -68,3 +68,9 @@ tmp/
 temp/
 *.tmp
 *.bak
+
+# Naver Blog Manager
+naver_blog_manager/data/*.db
+naver_blog_manager/data/*.json
+naver_blog_manager/.env
+naver_blog_manager/**/__pycache__/

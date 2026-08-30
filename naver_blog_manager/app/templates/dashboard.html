@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}대시보드 - PT샵 네이버 블로그 매니저{% endblock %}
+{% block content %}
+
+<div class="stat-grid" id="stat-grid">
+  <div class="stat-card">
+    <div class="stat-card__head">모니터링 키워드 <span class="stat-card__icon">📚</span></div>
+    <div class="stat-card__value" id="stat-monitored">-</div>
+    <div class="stat-card__sub" id="stat-monitored-sub">개 등록 관리 중</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card__head">TOP 7 총 점유율 <span class="stat-card__icon">🔥</span></div>
+    <div class="stat-card__value" id="stat-share">- / -</div>
+    <div class="stat-card__bar"><div class="stat-card__bar-fill" id="stat-share-bar" style="width:0%"></div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card__head">직원(트레이너) 상위노출 <span class="stat-card__icon">🧑‍🤝‍🧑</span></div>
+    <div class="stat-card__value" id="stat-staff">-</div>
+    <div class="stat-card__sub" id="stat-staff-sub">개 포스팅 노출 중</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card__head">체험단 / 서포터즈 점유 <span class="stat-card__icon stat-card__icon--purple">👑</span></div>
+    <div class="stat-card__value" id="stat-experience">-</div>
+    <div class="stat-card__sub" id="stat-experience-sub">개 후기 노출 중</div>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="search-box">
+    <span>🔍</span>
+    <input id="search-input" type="text" placeholder="키워드 검색..." />
+  </div>
+  <div class="filter-tabs" id="filter-tabs">
+    <button class="filter-tab active" data-filter="all">전체</button>
+  </div>
+  <div class="toolbar-spacer"></div>
+  <button class="btn btn-outline" id="refresh-all-btn">↻ 전체 순위 갱신</button>
+  <button class="btn btn-primary" id="add-keyword-btn">+ 키워드 추가</button>
+</div>
+
+<div class="legend">
+  <span><i class="staff"></i> 직원 블로그</span>
+  <span><i class="experience"></i> 체험단/서포터즈</span>
+  <span><i class="company"></i> 공식 블로그</span>
+  <span><i class="other"></i> 타업체/미확인</span>
+</div>
+
+<div class="kw-list" id="kw-list">
+  <div class="empty-state">불러오는 중...</div>
+</div>
+
+<!-- 키워드 추가 모달 -->
+<div class="modal-overlay" id="add-keyword-modal" hidden>
+  <div class="modal">
+    <h3>키워드 추가</h3>
+    <form id="add-keyword-form">
+      <div class="field">
+        <label>키워드</label>
+        <input type="text" name="keyword" placeholder="예: 서상동PT" required />
+      </div>
+      <div class="field">
+        <label>카테고리 (자유 입력, 필터 탭에 사용됨)</label>
+        <input type="text" name="category" placeholder="예: 메인 / 타겟질환 / 세부키워드" />
+      </div>
+      <div class="field">
+        <label>메모 (선택)</label>
+        <input type="text" name="memo" placeholder="예: 가장 유입/상담 전환율이 높은 핵심 키워드" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="add-keyword-cancel">취소</button>
+        <button type="submit" class="btn btn-primary">추가</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_scripts %}
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}
