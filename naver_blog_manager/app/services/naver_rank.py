@@ -28,6 +28,30 @@ MAIN_CONTAINER_SELECTORS = ["#main_pack", "div.api_subject_bx", "body"]
 # 광고/파워링크 등 결과에서 제외할 영역
 EXCLUDE_SELECTORS = ["[class*='power_link']", "[class*='ad_']", "[id*='power_link']"]
 
+# 네이버가 자동화 접근을 의심해 보안문자/차단 페이지를 돌려줄 때 흔히 등장하는 문구들.
+# 이런 페이지에서는 "결과 0개"가 곧 "우리 글이 다 내려갔다"는 뜻이 아니므로 반드시 구분해야 한다.
+_BLOCK_INDICATORS = [
+    "자동입력 방지",
+    "비정상적인 접근",
+    "captcha",
+    "보안문자",
+    "이용에 불편을 드려",
+    "잠시 후 다시 시도",
+]
+
+
+class NaverBlockError(RuntimeError):
+    """네이버가 차단/보안문자 페이지를 돌려준 것으로 의심될 때 발생시킨다.
+
+    이 경우 조회 결과를 DB에 저장하면 안 된다 - 잘못된 "0/7" 스냅샷이 남아서
+    실제로는 내려가지 않은 글이 "이탈 발생"으로 잘못 표시될 수 있기 때문이다.
+    """
+
+
+def detect_block(html: str) -> bool:
+    lowered = html.lower()
+    return any(indicator.lower() in lowered for indicator in _BLOCK_INDICATORS)
+
 
 @dataclass
 class RankItem:
@@ -130,8 +154,18 @@ async def fetch_view_html(keyword: str, timeout_ms: int = 15000) -> str:
 async def check_keyword_rank(
     keyword: str, registered_blogs: list, top_n: int = config.TOP_N
 ) -> list[RankItem]:
-    """키워드 하나를 조회해서 소유자까지 매칭된 RankItem 리스트를 반환."""
+    """키워드 하나를 조회해서 소유자까지 매칭된 RankItem 리스트를 반환.
+
+    네이버가 차단/보안문자 페이지를 돌려준 것으로 의심되면 NaverBlockError를 발생시키고,
+    이 경우 호출자는 (잘못된 0개 결과를 저장하는 대신) 저장을 건너뛰고 나중에 다시
+    시도해야 한다.
+    """
     html = await fetch_view_html(keyword)
+    if detect_block(html):
+        raise NaverBlockError(
+            f"'{keyword}' 조회 결과가 비정상적입니다 (네이버 차단/보안문자 페이지로 의심됨). "
+            "잠시 후 다시 시도해주세요."
+        )
     items = parse_view_html(html, top_n=top_n)
     for item in items:
         ownership, matched = matcher.match_ownership(item.blog_id, registered_blogs)

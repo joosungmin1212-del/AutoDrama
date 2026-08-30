@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
+from ..services import secure_storage
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -37,7 +38,7 @@ def update_settings(payload: schemas.SettingIn, db: Session = Depends(get_db)):
     setting.phone = payload.phone
     setting.strengths = payload.strengths
     if payload.openai_api_key:  # 화면에 마스킹되어 오므로, 빈 값이면 기존 키를 그대로 유지
-        setting.openai_api_key = payload.openai_api_key
+        setting.openai_api_key = secure_storage.protect(payload.openai_api_key)
     setting.openai_model = payload.openai_model
     setting.rank_check_interval_hours = payload.rank_check_interval_hours
     db.commit()

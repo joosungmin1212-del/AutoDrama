@@ -9,6 +9,9 @@ import os
 import tempfile
 
 os.environ.setdefault("NBM_DATA_DIR", tempfile.mkdtemp(prefix="nbm_test_"))
+# 로컬호스트 접근 토큰 검사는 실제 브라우저 흐름이 있어야 의미가 있으므로 테스트에서는 끈다
+# (app/main.py의 local_token_guard 미들웨어 참고).
+os.environ.setdefault("NBM_DISABLE_AUTH", "1")
 
 import pytest  # noqa: E402
 

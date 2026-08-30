@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import naver_browser, openai_writer
+from ..services import naver_browser, openai_writer, secure_storage
 
 router = APIRouter(prefix="/api/writer", tags=["writer"])
 
@@ -32,7 +32,7 @@ def generate(payload: schemas.WriterGenerateIn, db: Session = Depends(get_db)):
     )
     try:
         generated = openai_writer.generate_post(
-            api_key=setting.openai_api_key,
+            api_key=secure_storage.unprotect(setting.openai_api_key),
             model=setting.openai_model,
             title=payload.title,
             keyword=payload.keyword,

@@ -28,6 +28,9 @@ playwright>=1.42.0,<2.0.0
 # AI 글 생성
 openai>=1.30.0,<2.0.0
 
+# 로컬 저장 민감정보 암호화 (OpenAI 키 / 네이버 로그인 세션) - DPAPI를 못 쓰는 환경의 폴백
+cryptography>=42.0.0,<44.0.0
+
 # 테스트
 pytest>=8.0.0,<9.0.0
 pytest-asyncio>=0.23.0,<1.0.0

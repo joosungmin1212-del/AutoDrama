@@ -1,19 +1,30 @@
 """FastAPI 앱 조립."""
 from __future__ import annotations
 
+import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .db import init_db
 from .routers import blogs, dashboard, keywords, naver_auth, writer
 from .routers import settings as settings_router
-from .services import scheduler as scheduler_service
+from .services import access_token, scheduler as scheduler_service
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# 이 서버는 127.0.0.1에만 열려 있지만, 같은 PC의 다른 Windows 계정/프로그램도 로컬호스트
+# 포트에는 동일하게 접근할 수 있다. run.py가 브라우저를 직접 열어줄 때만 이 토큰이 쿠키로
+# 심어지므로, 토큰을 모르는 다른 프로세스는 /api/*를 호출할 수 없다.
+# 테스트(TestClient)에서는 NBM_DISABLE_AUTH=1로 이 검사를 건너뛴다.
+APP_TOKEN = access_token.get_or_create_token()
+TOKEN_COOKIE_NAME = "nbm_token"
+_AUTH_DISABLED = os.getenv("NBM_DISABLE_AUTH") == "1"
 
 
 @asynccontextmanager
@@ -35,6 +46,37 @@ app.include_router(blogs.router)
 app.include_router(writer.router)
 app.include_router(naver_auth.router)
 app.include_router(settings_router.router)
+
+
+@app.middleware("http")
+async def local_token_guard(request: Request, call_next):
+    """run.py가 열어준 브라우저인지 확인한다 (토큰 쿠키/헤더/쿼리스트링 중 하나로 인증)."""
+    if _AUTH_DISABLED:
+        return await call_next(request)
+
+    supplied = (
+        request.query_params.get("token")
+        or request.cookies.get(TOKEN_COOKIE_NAME)
+        or request.headers.get("X-App-Token")
+        or ""
+    )
+    authorized = secrets.compare_digest(supplied, APP_TOKEN)
+
+    if request.url.path.startswith("/api/") and not authorized:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "인증이 필요합니다. run.py(2_실행하기.bat)로 연 창에서 다시 접속해주세요."},
+        )
+
+    response = await call_next(request)
+
+    # 정상 토큰으로 페이지에 처음 들어온 경우, 이후 요청부터는 쿼리스트링 없이도 되도록
+    # 쿠키를 심어준다 (탭 안에서의 페이지 이동/새로고침에 계속 토큰을 붙일 필요가 없게).
+    if authorized and not request.url.path.startswith("/api/"):
+        response.set_cookie(
+            TOKEN_COOKIE_NAME, APP_TOKEN, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30
+        )
+    return response
 
 
 @app.get("/")

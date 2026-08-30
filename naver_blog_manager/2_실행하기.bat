@@ -17,8 +17,6 @@ echo   (이 검은 창을 닫으면 프로그램이 꺼집니다. 켜둔 채로 
 echo ============================================
 echo.
 
-start "" cmd /c "timeout /t 2 >nul && start http://127.0.0.1:8000"
-
 python run.py
 
 echo.
