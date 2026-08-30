@@ -10,11 +10,17 @@ PT샵(피트니스 센터)용 네이버 블로그 SEO 도구입니다. PC에서 
 이 프로그램은 인터넷에 떠 있는 사이트가 아니라, **내 컴퓨터 안에 설치해서 쓰는 프로그램**입니다.
 그래서 "URL로 바로 접속"은 안 되고, 아래처럼 딱 한 번만 내려받아 설치하면 됩니다.
 
-**1) 다운로드**
+**1) 다운로드 — 반드시 짧은 경로로 옮기세요 (중요!)**
 - 이 저장소 페이지에서 초록색 **`Code`** 버튼 → **`Download ZIP`** 클릭
   (직접 링크: `https://github.com/joosungmin1212-del/AutoDrama/archive/refs/heads/claude/naver-blog-auto-writer-lbyec3.zip`)
 - 다운로드된 zip 파일을 오른쪽 클릭 → "압축 풀기(모두 추출)"
-- 압축 푼 폴더 안의 `naver_blog_manager` 폴더로 들어가세요.
+- 압축을 풀면 `AutoDrama-claude-naver-blog-auto-writer-lbyec3` 같은 **길고 긴 이름의 폴더**가
+  생기는데, 이건 정상입니다 (GitHub가 자동으로 붙이는 이름이에요). 문제는 이 안에서 그대로
+  설치하면 전체 경로가 너무 길어져서 **Windows가 파일을 못 만드는 오류**가 날 수 있다는 점입니다.
+  → **그 안의 `naver_blog_manager` 폴더만 통째로 잘라내기(Cut)** 해서
+  **`C:\` 드라이브 바로 밑에 붙여넣어주세요** (최종 경로가 `C:\naver_blog_manager` 처럼 짧아야 합니다).
+  그 다음 원래 다운로드/압축 푼 폴더는 지워도 됩니다.
+- 이제 `C:\naver_blog_manager` 폴더로 들어가세요.
 
 **2) 설치 (딱 1번만)**
 - `1_설치하기.bat` 파일을 더블클릭
