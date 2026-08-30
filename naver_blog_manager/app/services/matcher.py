@@ -13,6 +13,10 @@ _BLOG_RE = re.compile(r"blog\.naver\.com/([a-zA-Z0-9_\-]+)", re.IGNORECASE)
 _CAFE_NEW_RE = re.compile(r"cafe\.naver\.com/ca-fe/cafes/(\d+)", re.IGNORECASE)
 _CAFE_OLD_RE = re.compile(r"cafe\.naver\.com/([a-zA-Z0-9_\-]+)(?:/\d+)?", re.IGNORECASE)
 
+_BLOG_POST_RE = re.compile(r"blog\.naver\.com/([a-zA-Z0-9_\-]+)/(\d+)", re.IGNORECASE)
+_CAFE_NEW_POST_RE = re.compile(r"cafe\.naver\.com/ca-fe/cafes/(\d+)/articles/(\d+)", re.IGNORECASE)
+_CAFE_OLD_POST_RE = re.compile(r"cafe\.naver\.com/([a-zA-Z0-9_\-]+)/(\d+)", re.IGNORECASE)
+
 _ROLE_TO_OWNERSHIP = {
     BlogRole.COMPANY.value: Ownership.OURS_COMPANY.value,
     BlogRole.STAFF.value: Ownership.OURS_STAFF.value,
@@ -55,6 +59,54 @@ def extract_identifier(url: str) -> str:
         return match.group(1).lower()
 
     return ""
+
+
+def extract_post_key(url: str) -> str:
+    """글 하나를 유일하게 식별하는 키를 만든다 ("이 글 자체"를 추적하기 위함).
+
+    체험단 확인 여부는 순위/등장 여부와 무관하게 "그 글"에 계속 붙어있어야 한다 - 순위가
+    바뀌거나 한동안 TOP7에서 안 보이다 다시 나타나도 같은 키가 나와야 다시 물어보지 않는다.
+    blog_id/cafe_id + 글 번호 조합을 쓰고, 글 번호를 못 찾으면 URL 경로를 최후의 수단으로 쓴다.
+    """
+    if not url:
+        return ""
+
+    match = _BLOG_POST_RE.search(url)
+    if match and match.group(1).lower() != "postview":
+        return f"blog:{match.group(1).lower()}:{match.group(2)}"
+
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    if "blogId" in qs and qs["blogId"]:
+        log_no = (qs.get("logNo") or [""])[0]
+        if log_no:
+            return f"blog:{qs['blogId'][0].lower()}:{log_no}"
+
+    match = _CAFE_NEW_POST_RE.search(url)
+    if match:
+        return f"cafe:{match.group(1)}:{match.group(2)}"
+
+    match = _CAFE_OLD_POST_RE.search(url)
+    if match:
+        return f"cafe:{match.group(1).lower()}:{match.group(2)}"
+
+    return f"url:{parsed.netloc}{parsed.path.rstrip('/')}"
+
+
+def find_name_match(title: str, watch_names: list[str]) -> str | None:
+    """제목에 업체명/직원 이름 중 하나가 들어있으면 그 이름을 반환한다 (없으면 None).
+
+    체험단처럼 미리 등록해둔 블로그가 아닌 글에서, 제목만 보고 "우리 이야기일 수 있다"고
+    걸러내는 용도. 확정은 사람이 하고, 이건 그 후보를 찾아내는 역할만 한다.
+    """
+    if not title:
+        return None
+    lowered_title = title.lower()
+    for name in watch_names:
+        name = (name or "").strip()
+        if name and name.lower() in lowered_title:
+            return name
+    return None
 
 
 def match_ownership(identifier: str, registered_blogs: list) -> tuple[str, object | None]:

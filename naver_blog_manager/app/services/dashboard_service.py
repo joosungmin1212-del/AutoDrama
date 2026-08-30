@@ -15,6 +15,7 @@ def build_slots(results: list) -> list[dict]:
             "position": i,
             "ownership": "empty",
             "owner_name": None,
+            "owner_blog_id": None,
             "title": "",
             "url": "",
             "content_type": "",
@@ -30,6 +31,7 @@ def build_slots(results: list) -> list[dict]:
 
         if is_dict:
             owner_name = r.get("owner_name")
+            owner_blog_id = r.get("owner_blog_id")
             ownership = r.get("ownership", "other")
             title = r.get("title", "")
             url = r.get("url", "")
@@ -37,6 +39,7 @@ def build_slots(results: list) -> list[dict]:
         else:
             matched = getattr(r, "matched_blog", None)
             owner_name = getattr(matched, "name", None) if matched else None
+            owner_blog_id = getattr(matched, "id", None) if matched else None
             ownership = r.ownership
             title = r.title
             url = r.url
@@ -46,6 +49,7 @@ def build_slots(results: list) -> list[dict]:
             "position": pos,
             "ownership": ownership,
             "owner_name": owner_name,
+            "owner_blog_id": owner_blog_id,
             "title": title,
             "url": url,
             "content_type": content_type,
@@ -58,31 +62,60 @@ def count_ours(slots: list[dict]) -> int:
     return sum(1 for s in slots if s["ownership"].startswith("ours_"))
 
 
-def aggregate_stats(keyword_summaries: list[dict], open_alert_count: int) -> dict:
+def count_by_ownership(slots: list[dict], ownership: str) -> int:
+    return sum(1 for s in slots if s["ownership"] == ownership)
+
+
+def build_staff_presence(slots: list[dict], staff_blogs: list) -> list[dict]:
+    """등록된 직원(또는 공식블로그) 각각이 이 키워드의 TOP7 안에 있는지 여부.
+
+    예: 서상동PT (4/7) -> 원장(v) 이수석(v) 박재활(x) 처럼 대시보드에 바로 쓰인다.
+    """
+    present_ids = {s["owner_blog_id"] for s in slots if s.get("owner_blog_id")}
+    presence = []
+    for b in staff_blogs:
+        blog_id, name = (b["id"], b["name"]) if isinstance(b, dict) else (b.id, b.name)
+        presence.append({"id": blog_id, "name": name, "present": blog_id in present_ids})
+    return presence
+
+
+def aggregate_stats(
+    keyword_summaries: list[dict], open_alert_count: int, pending_content_match_count: int = 0
+) -> dict:
     monitored = len(keyword_summaries)
     our_total = sum(k["our_count"] for k in keyword_summaries)
     our_slots_total = monitored * config.TOP_N
 
     staff_breakdown: dict[str, int] = {}
     experience_breakdown: dict[str, int] = {}
+    staff_exposure_count = 0
+    experience_exposure_count = 0
     for k in keyword_summaries:
         for slot in k["slots"]:
-            if not slot["owner_name"]:
-                continue
             if slot["ownership"] == Ownership.OURS_STAFF.value:
-                staff_breakdown[slot["owner_name"]] = staff_breakdown.get(slot["owner_name"], 0) + 1
+                staff_exposure_count += 1
+                if slot["owner_name"]:
+                    staff_breakdown[slot["owner_name"]] = (
+                        staff_breakdown.get(slot["owner_name"], 0) + 1
+                    )
             elif slot["ownership"] == Ownership.OURS_EXPERIENCE.value:
-                experience_breakdown[slot["owner_name"]] = (
-                    experience_breakdown.get(slot["owner_name"], 0) + 1
-                )
+                experience_exposure_count += 1
+                # 자동 감지(제목 매칭)로 확정된 체험단 글은 등록된 블로그가 아니라서
+                # owner_name이 없을 수 있다 - 그래도 전체 개수(experience_exposure_count)에는
+                # 포함하고, 이름별 분해(experience_breakdown)에만 못 넣는 것.
+                if slot["owner_name"]:
+                    experience_breakdown[slot["owner_name"]] = (
+                        experience_breakdown.get(slot["owner_name"], 0) + 1
+                    )
 
     return {
         "monitored_keywords": monitored,
         "our_total": our_total,
         "our_slots_total": our_slots_total,
-        "staff_exposure_count": sum(staff_breakdown.values()),
-        "experience_exposure_count": sum(experience_breakdown.values()),
+        "staff_exposure_count": staff_exposure_count,
+        "experience_exposure_count": experience_exposure_count,
         "staff_breakdown": staff_breakdown,
         "experience_breakdown": experience_breakdown,
         "open_alert_count": open_alert_count,
+        "pending_content_match_count": pending_content_match_count,
     }

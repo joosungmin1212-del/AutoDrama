@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from .. import config, models
-from . import naver_rank
+from . import content_match_service, naver_rank
 
 
 def _load_previous_items(db: Session, keyword_id: int) -> list[naver_rank.RankItem]:
@@ -43,6 +43,11 @@ async def run_rank_check_async(
     previous_items = _load_previous_items(db, keyword.id)
 
     items = await naver_rank.check_keyword_rank(keyword.keyword, registered_blogs, page=page)
+
+    # 등록된 블로그로 안 잡힌(주로 체험단) 글 중 제목에 우리 이름이 보이는 게 있으면
+    # "확인 필요" 후보로 걸거나, 이전에 확정/거절해둔 판정을 그대로 적용한다.
+    watch_names = content_match_service.get_watch_names(db)
+    content_match_service.apply_content_matches(db, items, watch_names)
 
     rank_check = models.RankCheck(keyword_id=keyword.id, checked_at=datetime.utcnow())
     db.add(rank_check)

@@ -2,6 +2,7 @@ const OWNERSHIP_LABEL = {
   ours_staff: "직원",
   ours_experience: "체험단",
   ours_company: "공식블로그",
+  pending_experience: "체험단 의심(확인필요)",
   other: "타업체",
   empty: "미노출",
 };
@@ -9,6 +10,7 @@ const OWNERSHIP_LABEL = {
 let dashboardData = { stats: null, keywords: [] };
 let currentFilter = "all";
 let searchText = "";
+let draggedKeywordId = null;
 
 async function loadDashboard() {
   try {
@@ -44,6 +46,10 @@ function renderStats(stats) {
     stats.experience_breakdown,
     "개 후기 노출 중"
   );
+
+  const btn = document.getElementById("content-match-btn");
+  btn.textContent = `🕵️ 체험단 확인 필요 (${stats.pending_content_match_count})`;
+  btn.classList.toggle("filter-tab--alert", stats.pending_content_match_count > 0);
 }
 
 function pct(n, total) {
@@ -80,6 +86,17 @@ function renderFilterTabs(keywords, stats) {
       renderKeywordList();
     });
   });
+
+  updateReorderHint();
+}
+
+function isReorderEnabled() {
+  return currentFilter === "all" && !searchText.trim();
+}
+
+function updateReorderHint() {
+  const hint = document.getElementById("reorder-hint");
+  hint.hidden = !isReorderEnabled();
 }
 
 function renderKeywordList() {
@@ -96,12 +113,15 @@ function renderKeywordList() {
     keywords = keywords.filter((k) => k.keyword.toLowerCase().includes(q));
   }
 
+  updateReorderHint();
+
   if (keywords.length === 0) {
     listEl.innerHTML = `<div class="empty-state">등록된 키워드가 없습니다. 우측 상단 "+ 키워드 추가"로 시작해보세요.</div>`;
     return;
   }
 
-  listEl.innerHTML = keywords.map(renderKeywordCard).join("");
+  const draggable = isReorderEnabled();
+  listEl.innerHTML = keywords.map((k) => renderKeywordCard(k, draggable)).join("");
 
   listEl.querySelectorAll("[data-action='refresh']").forEach((btn) => {
     btn.addEventListener("click", () => refreshKeyword(Number(btn.dataset.id), btn));
@@ -114,20 +134,47 @@ function renderKeywordList() {
       window.location.href = `/writer?keyword=${encodeURIComponent(btn.dataset.keyword)}`;
     });
   });
+
+  if (draggable) {
+    setupDragAndDrop(listEl);
+  }
 }
 
-function renderKeywordCard(k) {
+function renderEmployeeChecklist(k) {
+  const badges = k.staff_presence.map(
+    (s) =>
+      `<span class="emp-badge ${s.present ? "emp-badge--yes" : "emp-badge--no"}">${escapeHtml(s.name)} ${
+        s.present ? "✓" : "✗"
+      }</span>`
+  );
+
+  if (k.experience_confirmed_count > 0) {
+    badges.push(`<span class="emp-badge emp-badge--experience">체험단 ${k.experience_confirmed_count}</span>`);
+  }
+  if (k.experience_pending_count > 0) {
+    badges.push(
+      `<span class="emp-badge emp-badge--pending" data-action="open-content-match" title="클릭해서 확인하기">체험단 의심 ${k.experience_pending_count} ?</span>`
+    );
+  }
+
+  return `<div class="emp-checklist">${badges.join("")}</div>`;
+}
+
+function renderKeywordCard(k, draggable) {
   const pctVal = pct(k.our_count, k.total_slots);
   const alertClass = k.has_open_alert ? "kw-card--alert" : "";
   const dots = k.slots
     .map((s) => {
-      const label = s.title ? `${OWNERSHIP_LABEL[s.ownership] || ""}${s.owner_name ? " · " + s.owner_name : ""}\n${s.title}` : "미노출";
+      const label = s.title
+        ? `${OWNERSHIP_LABEL[s.ownership] || ""}${s.owner_name ? " · " + s.owner_name : ""}\n${s.title}`
+        : "미노출";
       return `<span class="rank-dot rank-dot--${s.ownership}" title="${escapeHtml(label)}">${s.position}</span>`;
     })
     .join("");
 
   return `
-  <div class="kw-card ${alertClass}">
+  <div class="kw-card ${alertClass}" data-id="${k.id}" ${draggable ? 'draggable="true"' : ""}>
+    ${draggable ? '<span class="drag-handle" title="드래그해서 순서 바꾸기">⠿</span>' : ""}
     <div class="kw-ratio-box">${k.our_count}/${k.total_slots}</div>
     <div class="kw-card__main">
       <div class="kw-card__title-row">
@@ -137,6 +184,7 @@ function renderKeywordCard(k) {
       </div>
       <div class="kw-card__meta">최근 확인: ${formatDateTime(k.last_checked_at)}</div>
       ${k.memo ? `<div class="kw-card__memo">${escapeHtml(k.memo)}</div>` : ""}
+      ${renderEmployeeChecklist(k)}
     </div>
     <div class="kw-card__right">
       <div>
@@ -150,6 +198,54 @@ function renderKeywordCard(k) {
       )}" title="삭제">🗑</button>
     </div>
   </div>`;
+}
+
+// ---------- 드래그앤드롭 순서 조절 ----------
+function setupDragAndDrop(listEl) {
+  const cards = [...listEl.querySelectorAll(".kw-card[draggable='true']")];
+
+  cards.forEach((card) => {
+    card.addEventListener("dragstart", () => {
+      draggedKeywordId = card.dataset.id;
+      card.classList.add("dragging");
+    });
+    card.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+      cards.forEach((c) => c.classList.remove("drag-over"));
+    });
+    card.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (card.dataset.id === draggedKeywordId) return;
+      cards.forEach((c) => c.classList.remove("drag-over"));
+      card.classList.add("drag-over");
+    });
+    card.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      card.classList.remove("drag-over");
+      const draggedEl = listEl.querySelector(`.kw-card[data-id="${draggedKeywordId}"]`);
+      if (!draggedEl || draggedEl === card) return;
+
+      const cardsNow = [...listEl.querySelectorAll(".kw-card")];
+      const fromIndex = cardsNow.indexOf(draggedEl);
+      const toIndex = cardsNow.indexOf(card);
+      if (fromIndex < toIndex) {
+        card.after(draggedEl);
+      } else {
+        card.before(draggedEl);
+      }
+
+      const newOrder = [...listEl.querySelectorAll(".kw-card")].map((c) => Number(c.dataset.id));
+      try {
+        await apiFetch("/api/keywords/reorder", {
+          method: "POST",
+          body: JSON.stringify({ order: newOrder }),
+        });
+      } catch (err) {
+        showToast(err.message, true);
+        await loadDashboard();
+      }
+    });
+  });
 }
 
 async function refreshKeyword(id, btn) {
@@ -210,6 +306,82 @@ function setupAddKeywordModal() {
   });
 }
 
+// ---------- 체험단 확인 모달 ----------
+async function loadContentMatchModal() {
+  const listEl = document.getElementById("content-match-list");
+  listEl.innerHTML = `<div class="empty-state">불러오는 중...</div>`;
+  let matches;
+  try {
+    matches = await apiFetch("/api/content-matches?status=pending");
+  } catch (e) {
+    listEl.innerHTML = `<div class="empty-state">${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  if (matches.length === 0) {
+    listEl.innerHTML = `<div class="empty-state">확인할 게 없습니다. 새로 걸리면 여기 나타납니다.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = matches
+    .map(
+      (m) => `
+    <div class="content-match-item" data-id="${m.id}">
+      <div class="content-match-item__title">${escapeHtml(m.title)}</div>
+      <div class="content-match-item__meta">
+        "${escapeHtml(m.matched_text)}" 이(가) 제목에 보여서 후보로 잡혔어요 ·
+        <a href="${escapeHtml(m.url)}" target="_blank" rel="noopener">글 보러가기 ↗</a>
+      </div>
+      <div class="content-match-item__actions">
+        <button class="btn btn-primary" data-decide="confirmed" data-id="${m.id}" style="padding:6px 14px;">✓ 우리 글 맞음</button>
+        <button class="btn btn-outline" data-decide="rejected" data-id="${m.id}" style="padding:6px 14px;">아니오</button>
+      </div>
+    </div>`
+    )
+    .join("");
+
+  listEl.querySelectorAll("[data-decide]").forEach((btn) => {
+    btn.addEventListener("click", () => decideContentMatch(Number(btn.dataset.id), btn.dataset.decide));
+  });
+}
+
+async function decideContentMatch(id, decision) {
+  try {
+    await apiFetch(`/api/content-matches/${id}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    });
+    showToast(decision === "confirmed" ? "체험단 글로 확정했습니다." : "우리 글이 아닌 것으로 처리했습니다.");
+    await loadContentMatchModal();
+    await loadDashboard();
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+function setupContentMatchModal() {
+  const modal = document.getElementById("content-match-modal");
+  const openBtn = document.getElementById("content-match-btn");
+  const closeBtn = document.getElementById("content-match-close");
+
+  openBtn.addEventListener("click", () => {
+    modal.hidden = false;
+    loadContentMatchModal();
+  });
+  closeBtn.addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+
+  // 키워드 카드의 "체험단 의심 N ?" 배지를 눌러도 같은 모달이 뜨도록
+  document.getElementById("kw-list").addEventListener("click", (e) => {
+    if (e.target.closest("[data-action='open-content-match']")) {
+      modal.hidden = false;
+      loadContentMatchModal();
+    }
+  });
+}
+
 document.getElementById("search-input").addEventListener("input", (e) => {
   searchText = e.target.value;
   renderKeywordList();
@@ -232,4 +404,5 @@ document.getElementById("refresh-all-btn").addEventListener("click", async (e) =
 });
 
 setupAddKeywordModal();
+setupContentMatchModal();
 loadDashboard();

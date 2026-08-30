@@ -57,9 +57,14 @@ class KeywordOut(BaseModel):
     category: str
     active: bool
     memo: str
+    sort_order: int
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class KeywordReorderIn(BaseModel):
+    order: list[int]  # 위에서부터 원하는 순서대로 나열한 키워드 id 목록
 
 
 # ---------- Rank ----------
@@ -90,6 +95,12 @@ class AlertOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class StaffPresenceOut(BaseModel):
+    id: int
+    name: str
+    present: bool
+
+
 class KeywordSummaryOut(BaseModel):
     """대시보드 카드 1개에 필요한 모든 정보."""
 
@@ -98,11 +109,15 @@ class KeywordSummaryOut(BaseModel):
     category: str
     memo: str
     active: bool
+    sort_order: int
     last_checked_at: datetime | None
-    our_count: int  # TOP7 중 우리(회사+직원+체험단) 글 개수
+    our_count: int  # TOP7 중 우리(회사+직원+체험단, 확정된 것만) 글 개수
     total_slots: int  # 항상 7 (TOP_N)
-    slots: list[dict]  # [{position, ownership, owner_name, title, url}] 1~7
+    slots: list[dict]  # [{position, ownership, owner_name, owner_blog_id, title, url}] 1~7
     has_open_alert: bool
+    staff_presence: list[StaffPresenceOut]  # 직원별로 이 키워드 TOP7에 있는지 여부
+    experience_confirmed_count: int  # 확정된 체험단 글 개수
+    experience_pending_count: int  # 아직 확인 안 한 "체험단 의심" 개수
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -116,11 +131,30 @@ class DashboardStats(BaseModel):
     staff_breakdown: dict[str, int]  # {직원이름: 개수}
     experience_breakdown: dict[str, int]
     open_alert_count: int
+    pending_content_match_count: int  # 전체 키워드에서 아직 확인 안 한 체험단 후보 개수
 
 
 class DashboardResponse(BaseModel):
     stats: DashboardStats
     keywords: list[KeywordSummaryOut]
+
+
+# ---------- Content Match (체험단 자동 감지) ----------
+class ContentMatchOut(BaseModel):
+    id: int
+    post_key: str
+    url: str
+    title: str
+    matched_text: str
+    decision: str
+    created_at: datetime
+    decided_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ContentMatchDecisionIn(BaseModel):
+    decision: str = Field(pattern="^(confirmed|rejected)$")
 
 
 # ---------- Writer ----------

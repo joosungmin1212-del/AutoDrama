@@ -204,7 +204,9 @@ def detect_dropouts(
     current_keys = {(item.blog_id, item.content_type) for item in current_items if item.blog_id}
     dropped = []
     for prev in previous_items:
-        if prev.ownership == "other" or not prev.blog_id:
+        # "other"(타업체)와 "pending_experience"(아직 사람이 확정 안 한 체험단 후보)는
+        # 우리 글이라고 확신할 수 없으므로 이탈 알림 대상에서 제외한다.
+        if prev.ownership in ("other", "pending_experience") or not prev.blog_id:
             continue
         key = (prev.blog_id, prev.content_type)
         if key not in current_keys:

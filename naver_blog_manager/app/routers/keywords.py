@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -11,13 +12,21 @@ router = APIRouter(prefix="/api/keywords", tags=["keywords"])
 
 @router.get("", response_model=list[schemas.KeywordOut])
 def list_keywords(db: Session = Depends(get_db)):
-    return db.query(models.Keyword).order_by(models.Keyword.created_at.desc()).all()
+    return (
+        db.query(models.Keyword)
+        .order_by(models.Keyword.sort_order.asc(), models.Keyword.created_at.asc())
+        .all()
+    )
 
 
 @router.post("", response_model=schemas.KeywordOut)
 def create_keyword(payload: schemas.KeywordIn, db: Session = Depends(get_db)):
+    max_order = db.query(func.max(models.Keyword.sort_order)).scalar() or 0
     keyword = models.Keyword(
-        keyword=payload.keyword.strip(), category=payload.category.strip(), memo=payload.memo.strip()
+        keyword=payload.keyword.strip(),
+        category=payload.category.strip(),
+        memo=payload.memo.strip(),
+        sort_order=max_order + 1,
     )
     db.add(keyword)
     try:
@@ -35,6 +44,17 @@ def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
     if not keyword:
         raise HTTPException(status_code=404, detail="키워드를 찾을 수 없습니다.")
     db.delete(keyword)
+    db.commit()
+    return {"success": True}
+
+
+@router.post("/reorder")
+def reorder_keywords(payload: schemas.KeywordReorderIn, db: Session = Depends(get_db)):
+    """대시보드 드래그앤드롭으로 정한 순서를 저장한다. payload.order는 위에서부터 나열한 id 목록."""
+    for index, keyword_id in enumerate(payload.order):
+        db.query(models.Keyword).filter(models.Keyword.id == keyword_id).update(
+            {"sort_order": index}
+        )
     db.commit()
     return {"success": True}
 

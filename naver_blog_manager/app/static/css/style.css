@@ -444,6 +444,107 @@ button {
   color: var(--text-faint);
 }
 
+.rank-dot--pending_experience {
+  background: #fef3c7;
+  border-color: var(--amber);
+  color: #92400e;
+}
+
+/* ---------- 직원 체크리스트 (A✓ B✓ C✗ 체험단 2) ---------- */
+.emp-checklist {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.emp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+.emp-badge--yes {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  border-color: transparent;
+}
+
+.emp-badge--no {
+  background: #f3f4f6;
+  color: var(--text-faint);
+}
+
+.emp-badge--experience {
+  background: var(--purple-soft);
+  color: var(--purple);
+  border-color: transparent;
+}
+
+.emp-badge--pending {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: transparent;
+  cursor: pointer;
+}
+
+.emp-badge--pending:hover {
+  filter: brightness(0.97);
+}
+
+/* ---------- 드래그앤드롭 ---------- */
+.kw-card[draggable="true"] {
+  cursor: grab;
+}
+
+.kw-card.dragging {
+  opacity: 0.4;
+}
+
+.kw-card.drag-over {
+  border-top: 3px solid var(--primary);
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  color: var(--text-faint);
+  font-size: 16px;
+  cursor: grab;
+  padding: 0 2px;
+}
+
+/* ---------- 체험단 확인 리스트 ---------- */
+.content-match-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--bg);
+}
+
+.content-match-item__title {
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.content-match-item__meta {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+
+.content-match-item__actions {
+  display: flex;
+  gap: 8px;
+}
+
 .kw-ratio-text {
   font-size: 13px;
   font-weight: 700;
@@ -537,6 +638,10 @@ button {
 
 .legend i.other {
   background: #d1d5db;
+}
+
+.legend i.pending {
+  background: var(--amber);
 }
 
 /* ---------- Modal ---------- */

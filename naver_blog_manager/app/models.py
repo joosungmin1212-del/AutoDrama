@@ -39,7 +39,14 @@ class Ownership(str, enum.Enum):
     OURS_COMPANY = "ours_company"
     OURS_STAFF = "ours_staff"
     OURS_EXPERIENCE = "ours_experience"
+    PENDING_EXPERIENCE = "pending_experience"  # 체험단 의심 - 아직 사람이 확인 안 함
     OTHER = "other"  # 등록되지 않은 타 업체/타인 글
+
+
+class ContentMatchDecision(str, enum.Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    REJECTED = "rejected"
 
 
 class Setting(Base):
@@ -82,6 +89,7 @@ class Keyword(Base):
     category: Mapped[str] = mapped_column(String(50), default="")  # 메인/타겟질환/세부키워드 등 자유 라벨
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     memo: Mapped[str] = mapped_column(String(300), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)  # 대시보드 드래그앤드롭 순서
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     rank_checks: Mapped[list["RankCheck"]] = relationship(
@@ -155,3 +163,22 @@ class Draft(Base):
     sent_to_naver_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     keyword: Mapped["Keyword | None"] = relationship()
+
+
+class ContentMatch(Base):
+    """등록되지 않은 블로그(주로 체험단)가 쓴 글인데, 제목에 우리 업체명/직원 이름이 나와서
+    "우리 글일 수 있다"고 자동으로 걸린 후보. 사람이 한 번 맞음/아니오로 확정하면 그 뒤로는
+    같은 글(post_key)이 다시 나와도 자동으로 같은 판정을 적용한다 - 순위가 오르내리거나
+    한동안 TOP7에서 사라졌다 돌아와도 이 판정은 계속 유효하다.
+    """
+
+    __tablename__ = "content_matches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    post_key: Mapped[str] = mapped_column(String(300), unique=True)  # 예: "blog:blogid:logno"
+    url: Mapped[str] = mapped_column(String(500), default="")
+    title: Mapped[str] = mapped_column(String(500), default="")
+    matched_text: Mapped[str] = mapped_column(String(200), default="")  # 어떤 이름/키워드에 걸렸는지
+    decision: Mapped[str] = mapped_column(String(12), default=ContentMatchDecision.PENDING.value)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

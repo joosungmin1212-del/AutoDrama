@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .db import init_db
-from .routers import blogs, dashboard, keywords, naver_auth, writer
+from .routers import blogs, content_matches, dashboard, keywords, naver_auth, writer
 from .routers import settings as settings_router
 from .services import access_token, scheduler as scheduler_service
 
@@ -46,6 +46,7 @@ app.include_router(blogs.router)
 app.include_router(writer.router)
 app.include_router(naver_auth.router)
 app.include_router(settings_router.router)
+app.include_router(content_matches.router)
 
 
 @app.middleware("http")

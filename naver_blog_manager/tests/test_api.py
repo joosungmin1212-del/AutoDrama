@@ -42,9 +42,50 @@ def test_dashboard_summary_shape(client):
     assert r.status_code == 200
     body = r.json()
     assert body["stats"]["monitored_keywords"] == 1
+    assert body["stats"]["pending_content_match_count"] == 0
     assert len(body["keywords"]) == 1
     assert len(body["keywords"][0]["slots"]) == 7
     assert body["keywords"][0]["our_count"] == 0
+    assert body["keywords"][0]["staff_presence"] == []
+    assert body["keywords"][0]["experience_confirmed_count"] == 0
+    assert body["keywords"][0]["experience_pending_count"] == 0
+
+
+def test_dashboard_shows_staff_presence(client):
+    client.post(
+        "/api/blogs",
+        json={"name": "원장", "blog_url": "https://blog.naver.com/wonjang_pt", "role": "staff"},
+    )
+    client.post("/api/keywords", json={"keyword": "서상동PT"})
+
+    body = client.get("/api/dashboard/summary").json()
+    assert body["keywords"][0]["staff_presence"] == [{"id": 1, "name": "원장", "present": False}]
+
+
+def test_keyword_reorder(client):
+    id_a = client.post("/api/keywords", json={"keyword": "키워드A"}).json()["id"]
+    id_b = client.post("/api/keywords", json={"keyword": "키워드B"}).json()["id"]
+
+    r = client.post("/api/keywords/reorder", json={"order": [id_b, id_a]})
+    assert r.status_code == 200
+
+    ordered = [k["keyword"] for k in client.get("/api/dashboard/summary").json()["keywords"]]
+    assert ordered == ["키워드B", "키워드A"]
+
+
+def test_content_match_flow(client):
+    client.put("/api/settings", json={"business_name": "OO PT샵", "openai_api_key": "", "rank_check_interval_hours": 24})
+
+    # 순위조회 없이 직접 API로는 content-match가 안 생기니, 서비스 계층 없이 라우트만 검증한다
+    r = client.get("/api/content-matches?status=pending")
+    assert r.status_code == 200
+    assert r.json() == []
+
+    r = client.post("/api/content-matches/999/decide", json={"decision": "confirmed"})
+    assert r.status_code == 404
+
+    r = client.post("/api/content-matches/1/decide", json={"decision": "invalid-value"})
+    assert r.status_code == 422
 
 
 def test_settings_masks_api_key(client):
