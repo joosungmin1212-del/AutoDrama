@@ -10,8 +10,6 @@
 """
 from __future__ import annotations
 
-import asyncio
-import random
 from dataclasses import dataclass
 from urllib.parse import quote, urlparse
 
@@ -133,45 +131,56 @@ def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
     return items
 
 
-async def fetch_view_html(keyword: str, timeout_ms: int = 20000) -> str:
-    """Playwright(headless)로 VIEW 통합검색 결과 HTML을 가져온다."""
+async def _load_search_page(page, keyword: str, timeout_ms: int) -> str:
+    """이미 열려있는 Playwright Page로 검색 결과 HTML을 가져온다 (브라우저 재사용용 저수준 함수)."""
+    url = VIEW_SEARCH_URL.format(query=quote(keyword))
+    # 주의: wait_until="networkidle"는 쓰지 않는다. 네이버 검색결과 페이지는 광고/로깅용
+    # 백그라운드 요청이 끊임없이 발생해서 "네트워크가 완전히 조용해지는 시점"이 거의
+    # 오지 않는다 - 그래서 매번 타임아웃으로 실패하고, 그러면 이 조회는 아예 저장되지
+    # 않아 대시보드에 "확인 전"만 계속 남는다. 대신 DOM이 준비되면 바로 진행하고,
+    # 본문 컨테이너가 나타날 때까지 짧게만 추가로 기다린다(안 나타나도 계속 진행).
+    await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+    try:
+        await page.wait_for_selector(", ".join(MAIN_CONTAINER_SELECTORS[:-1]), timeout=5000)
+    except Exception:  # noqa: BLE001
+        pass
+    return await page.content()
+
+
+async def fetch_view_html(keyword: str, page=None, timeout_ms: int = 20000) -> str:
+    """VIEW 통합검색 결과 HTML을 가져온다.
+
+    page를 넘기면 그 Page(=이미 떠 있는 브라우저)를 그대로 재사용한다. 키워드가 많을 때
+    (예: "전체 순위 갱신") 매번 새 브라우저를 켰다 끄는 오버헤드를 없애기 위함이다.
+    page를 안 넘기면 (예: 카드 하나만 순위 갱신) 이 함수가 알아서 브라우저를 켰다 끈다.
+    """
+    if page is not None:
+        return await _load_search_page(page, keyword, timeout_ms)
+
     # 지연 import: playwright가 설치되지 않은 환경(예: 유닛테스트만 도는 CI)에서도
     # 이 모듈의 parse_view_html 등은 문제없이 import/테스트 가능하게 하기 위함.
     from playwright.async_api import async_playwright
 
-    url = VIEW_SEARCH_URL.format(query=quote(keyword))
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
-            page = await browser.new_page(user_agent=config.NAVER_USER_AGENT)
-            # 주의: wait_until="networkidle"는 쓰지 않는다. 네이버 검색결과 페이지는 광고/로깅용
-            # 백그라운드 요청이 끊임없이 발생해서 "네트워크가 완전히 조용해지는 시점"이 거의
-            # 오지 않는다 - 그래서 매번 타임아웃으로 실패하고, 그러면 이 조회는 아예 저장되지
-            # 않아 대시보드에 "확인 전"만 계속 남는다. 대신 DOM이 준비되면 바로 진행하고,
-            # 본문 컨테이너가 나타날 때까지 짧게만 추가로 기다린다(안 나타나도 계속 진행).
-            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-            try:
-                await page.wait_for_selector(
-                    ", ".join(MAIN_CONTAINER_SELECTORS[:-1]), timeout=5000
-                )
-            except Exception:  # noqa: BLE001
-                pass
-            html = await page.content()
+            new_page = await browser.new_page(user_agent=config.NAVER_USER_AGENT)
+            return await _load_search_page(new_page, keyword, timeout_ms)
         finally:
             await browser.close()
-    return html
 
 
 async def check_keyword_rank(
-    keyword: str, registered_blogs: list, top_n: int = config.TOP_N
+    keyword: str, registered_blogs: list, top_n: int = config.TOP_N, page=None
 ) -> list[RankItem]:
     """키워드 하나를 조회해서 소유자까지 매칭된 RankItem 리스트를 반환.
 
     네이버가 차단/보안문자 페이지를 돌려준 것으로 의심되면 NaverBlockError를 발생시키고,
     이 경우 호출자는 (잘못된 0개 결과를 저장하는 대신) 저장을 건너뛰고 나중에 다시
-    시도해야 한다.
+    시도해야 한다. page를 넘기면 그 브라우저 Page를 재사용한다 (여러 키워드를 한 번에
+    조회할 때 rank_service.py에서 브라우저 하나로 돌려쓰기 위함).
     """
-    html = await fetch_view_html(keyword)
+    html = await fetch_view_html(keyword, page=page)
     if detect_block(html):
         raise NaverBlockError(
             f"'{keyword}' 조회 결과가 비정상적입니다 (네이버 차단/보안문자 페이지로 의심됨). "
@@ -183,19 +192,6 @@ async def check_keyword_rank(
         item.ownership = ownership
         item.matched_blog = matched
     return items
-
-
-async def check_keywords_with_delay(
-    keywords: list[str], registered_blogs: list, top_n: int = config.TOP_N
-) -> dict[str, list[RankItem]]:
-    """여러 키워드를 순차 조회하되, 요청 사이에 랜덤 딜레이를 둬서 과도한 크롤링을 피한다."""
-    results: dict[str, list[RankItem]] = {}
-    for idx, kw in enumerate(keywords):
-        if idx > 0:
-            delay = random.uniform(config.MIN_REQUEST_DELAY_SEC, config.MAX_REQUEST_DELAY_SEC)
-            await asyncio.sleep(delay)
-        results[kw] = await check_keyword_rank(kw, registered_blogs, top_n=top_n)
-    return results
 
 
 def detect_dropouts(

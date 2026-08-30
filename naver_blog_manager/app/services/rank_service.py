@@ -36,11 +36,13 @@ def _load_previous_items(db: Session, keyword_id: int) -> list[naver_rank.RankIt
     ]
 
 
-async def run_rank_check_async(db: Session, keyword: models.Keyword) -> models.RankCheck:
+async def run_rank_check_async(
+    db: Session, keyword: models.Keyword, page=None
+) -> models.RankCheck:
     registered_blogs = db.query(models.RegisteredBlog).all()
     previous_items = _load_previous_items(db, keyword.id)
 
-    items = await naver_rank.check_keyword_rank(keyword.keyword, registered_blogs)
+    items = await naver_rank.check_keyword_rank(keyword.keyword, registered_blogs, page=page)
 
     rank_check = models.RankCheck(keyword_id=keyword.id, checked_at=datetime.utcnow())
     db.add(rank_check)
@@ -84,14 +86,32 @@ def run_rank_check_sync(db: Session, keyword: models.Keyword) -> models.RankChec
 
 
 async def run_all_active_checks(db: Session) -> list[models.RankCheck]:
+    """등록된 키워드를 전부 순서대로 조회한다.
+
+    브라우저는 배치 전체에서 딱 1개만 켜서 재사용한다 (키워드마다 새로 켰다 끄던 예전 방식은
+    브라우저 실행 자체의 오버헤드가 커서, 키워드가 많을수록 불필요하게 느려졌다). 키워드
+    사이의 딜레이는 그대로 유지한다 - 이건 속도 문제가 아니라 네이버가 짧은 시간에 몰아치는
+    요청을 자동화로 의심하지 않게 하기 위한 것이라, 없애면 오히려 전체가 차단될 위험이 커진다.
+    """
     keywords = db.query(models.Keyword).filter(models.Keyword.active.is_(True)).all()
     checks: list[models.RankCheck] = []
-    for idx, kw in enumerate(keywords):
-        if idx > 0:
-            await asyncio.sleep(
-                random.uniform(config.MIN_REQUEST_DELAY_SEC, config.MAX_REQUEST_DELAY_SEC)
-            )
-        checks.append(await run_rank_check_async(db, kw))
+    if not keywords:
+        return checks
+
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        try:
+            page = await browser.new_page(user_agent=config.NAVER_USER_AGENT)
+            for idx, kw in enumerate(keywords):
+                if idx > 0:
+                    await asyncio.sleep(
+                        random.uniform(config.MIN_REQUEST_DELAY_SEC, config.MAX_REQUEST_DELAY_SEC)
+                    )
+                checks.append(await run_rank_check_async(db, kw, page=page))
+        finally:
+            await browser.close()
     return checks
 
 

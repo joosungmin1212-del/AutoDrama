@@ -15,7 +15,7 @@ def test_detect_block_false_on_normal_page():
 
 @pytest.mark.asyncio
 async def test_check_keyword_rank_raises_on_block(monkeypatch):
-    async def fake_fetch(keyword, timeout_ms=15000):
+    async def fake_fetch(keyword, page=None, timeout_ms=15000):
         return "<html>자동입력 방지 문자를 입력해주세요</html>"
 
     monkeypatch.setattr(naver_rank, "fetch_view_html", fake_fetch)
@@ -26,7 +26,7 @@ async def test_check_keyword_rank_raises_on_block(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_check_keyword_rank_succeeds_on_normal_page(monkeypatch):
-    async def fake_fetch(keyword, timeout_ms=15000):
+    async def fake_fetch(keyword, page=None, timeout_ms=15000):
         return (
             "<html><body><div id='main_pack'>"
             "<a href='https://blog.naver.com/mytrainer/1'>제목1</a>"
