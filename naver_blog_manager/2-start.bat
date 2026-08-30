@@ -4,7 +4,7 @@ cd /d "%~dp0"
 title PT샵 네이버 블로그 매니저
 
 if not exist ".venv\Scripts\activate.bat" (
-    echo [!] 아직 설치가 안 되어 있습니다. "1_설치하기.bat"을 먼저 더블클릭해주세요.
+    echo [!] 아직 설치가 안 되어 있습니다. "1-install.bat"을 먼저 더블클릭해주세요.
     pause
     exit /b 1
 )

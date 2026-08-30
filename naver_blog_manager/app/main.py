@@ -65,7 +65,7 @@ async def local_token_guard(request: Request, call_next):
     if request.url.path.startswith("/api/") and not authorized:
         return JSONResponse(
             status_code=401,
-            content={"detail": "인증이 필요합니다. run.py(2_실행하기.bat)로 연 창에서 다시 접속해주세요."},
+            content={"detail": "인증이 필요합니다. run.py(2-start.bat)로 연 창에서 다시 접속해주세요."},
         )
 
     response = await call_next(request)
