@@ -575,10 +575,12 @@ function renderKeywordDetailList(k) {
       }
 
       const label = ownershipLabel(s);
-      // 경쟁업체/체험단으로 등록해둔 계정이어도 이 글 자체의 판정은 항상 사람이 뒤집을
-      // 수 있어야 한다 - 같은 계정이 다른 키워드에선 완전히 다른 업체 글을 쓰기도 해서,
-      // "이 계정 = 항상 이 판정"으로 못 박으면 안 된다 (직원 블로그만 예외 - 늘 우리 것).
-      const canOverride = s.ownership !== "ours_staff";
+      // 경쟁업체는 계정 자체가 자기 홍보용이라 우리 얘기가 나올 일이 사실상 없어서
+      // 확정 버튼을 안 보여준다. 체험단은 다르다 - 같은 계정이 다른 키워드에선 완전히
+      // 다른 업체 글을 쓰기도 해서, 이 글 자체는 항상 사람이 판정을 뒤집을 수 있어야
+      // 한다 (직원 블로그만 예외 - 늘 우리 것).
+      const isKnownCompetitor = s.ownership === "other" && s.owner_role === "competitor";
+      const canOverride = s.ownership !== "ours_staff" && !isKnownCompetitor;
       const actions = canOverride
         ? `<div class="content-match-item__actions">
             <button class="btn btn-primary" data-kd-decide="confirmed" data-url="${escapeHtml(

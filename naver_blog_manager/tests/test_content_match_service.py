@@ -130,24 +130,37 @@ def test_manual_set_updates_existing_content_match(db_session):
 
 
 class _FakeRegisteredBlog:
-    def __init__(self, name):
+    def __init__(self, name, role="experience"):
         self.name = name
+        self.role = role
 
 
-def test_apply_content_matches_still_checks_title_even_for_a_known_registered_identity(db_session):
-    """실제로 있었던 문제: 체험단/경쟁업체로 등록해둔 같은 블로그 계정이 이 키워드에는
-    우리 업체 이야기를, 다른 키워드에는 완전히 다른 업체 이야기를 쓰는 경우가 흔하다.
-    그래서 item.matched_blog가 있어도(=신원이 등록된 계정) "이 계정 = 항상 이 판정"으로
+def test_apply_content_matches_still_checks_title_for_a_registered_experience_identity(db_session):
+    """실제로 있었던 문제: 체험단으로 등록해둔 같은 블로그 계정이 이 키워드에는 우리
+    업체 이야기를, 다른 키워드에는 완전히 다른 업체 이야기를 쓰는 경우가 흔하다. 그래서
+    item.matched_blog가 있어도(=체험단으로 등록된 계정) "이 계정 = 항상 이 판정"으로
     미리 건너뛰면 안 되고, 이 글의 제목은 그대로 검사해서 후보로 올려야 한다 - 신원 표시와
     이 글의 실제 판정은 별개다."""
-    item = _item("OO PT샵 근처 헬스장 이야기", "https://blog.naver.com/rival_trainer/1")
-    item.matched_blog = _FakeRegisteredBlog("김민수 헬스타이거")
+    item = _item("OO PT샵 근처 헬스장 이야기", "https://blog.naver.com/freelance_reviewer/1")
+    item.matched_blog = _FakeRegisteredBlog("체험단A", role="experience")
 
     content_match_service.apply_content_matches(db_session, [item], watch_names=["OO PT샵"])
     db_session.commit()
 
     assert item.ownership == Ownership.PENDING_EXPERIENCE.value
     assert db_session.query(ContentMatch).count() == 1
+
+
+def test_apply_content_matches_skips_registered_competitor_blogs():
+    """경쟁업체로 등록해둔 블로그는 계정 자체가 자기 홍보용이라 우리 얘기가 나올 일이
+    사실상 없으므로, 제목에 업체명이 우연히 들어있어도 체험단 후보로 올리면 안 된다 -
+    이미 신원이 확인된 타업체라 매번 재확인할 필요가 없다."""
+    item = _item("OO PT샵 근처 헬스장 이야기", "https://blog.naver.com/rival_trainer/1")
+    item.matched_blog = _FakeRegisteredBlog("김민수 헬스타이거", role="competitor")
+
+    content_match_service.apply_content_matches(None, [item], watch_names=["OO PT샵"])
+
+    assert item.ownership == "other"
 
 
 def test_apply_content_matches_skips_cafe_posts():

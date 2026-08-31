@@ -60,30 +60,39 @@ def test_match_ownership_empty_identifier():
     assert matched is None
 
 
-def test_match_ownership_does_not_blanket_match_competitor_or_experience():
-    """실제로 있었던 문제: 체험단/경쟁업체로 등록해둔 같은 블로그 계정이 키워드마다
-    완전히 다른 업체 글을 쓰는 경우가 흔한데, match_ownership이 계정 단위로 ownership을
-    자동 확정해버리면 그 계정의 아무 글이나 항상 "우리 것"/"항상 타업체"로 잘못 집계된다.
-    그래서 이 두 역할은 match_ownership에서 아예 안 잡혀야 하고(글 단위 판정은
-    content_match_service가 따로 함), 대신 find_known_identity로 신원만 표시한다."""
+def test_match_ownership_blanket_matches_competitor_but_not_experience():
+    """경쟁업체(주변 다른 트레이너/PT샵 본인 블로그)는 계정 자체가 자기 홍보용이라
+    우리 얘기가 나올 일이 사실상 없으므로, match_ownership이 계정 단위로 "확인된
+    타업체"를 자동 확정해도 안전하다 - 매번 재확인할 필요가 없다.
+
+    반대로 체험단은 같은 블로거가 이 키워드에는 우리 글을, 다른 키워드에는 완전히
+    다른 업체 글을 쓰는 경우가 흔해서(실제로 사용자가 지적한 문제), match_ownership이
+    계정 단위로 못 박으면 안 된다 - 여기서 안 잡혀야 하고, 글 단위 판정은
+    content_match_service가 따로 하며, 신원 표시만 find_known_identity가 해준다."""
     blogs = [
         FakeBlog("rival_trainer", BlogRole.COMPETITOR.value, "김민수 헬스타이거"),
         FakeBlog("freelance_reviewer", BlogRole.EXPERIENCE.value, "체험단A"),
     ]
 
-    for blog_id in ("rival_trainer", "freelance_reviewer"):
-        ownership, matched = matcher.match_ownership(blog_id, blogs)
-        assert ownership == Ownership.OTHER.value
-        assert matched is None
-
-
-def test_find_known_identity_finds_competitor_and_experience_regardless_of_role():
-    """match_ownership과 달리, find_known_identity는 신원 표시 용도로 역할 상관없이
-    등록된 블로그를 찾아준다 - ownership 판정에는 관여하지 않는다."""
-    blogs = [FakeBlog("rival_trainer", BlogRole.COMPETITOR.value, "김민수 헬스타이거")]
-    matched = matcher.find_known_identity("rival_trainer", blogs)
+    ownership, matched = matcher.match_ownership("rival_trainer", blogs)
+    assert ownership == Ownership.OTHER.value
     assert matched is not None
     assert matched.name == "김민수 헬스타이거"
+
+    ownership, matched = matcher.match_ownership("freelance_reviewer", blogs)
+    assert ownership == Ownership.OTHER.value
+    assert matched is None
+
+
+def test_find_known_identity_finds_experience_for_display_only():
+    """match_ownership과 달리, find_known_identity는 신원 표시 용도로 역할 상관없이
+    등록된 블로그를 찾아준다 - ownership 판정에는 관여하지 않는다. (실제 호출 지점인
+    naver_rank.check_keyword_rank는 match_ownership이 못 찾았을 때만 이걸 부르므로,
+    실질적으로는 체험단 등록을 찾아내는 역할이다.)"""
+    blogs = [FakeBlog("freelance_reviewer", BlogRole.EXPERIENCE.value, "체험단A")]
+    matched = matcher.find_known_identity("freelance_reviewer", blogs)
+    assert matched is not None
+    assert matched.name == "체험단A"
 
     assert matcher.find_known_identity("unknown_blog", blogs) is None
     assert matcher.find_known_identity("", blogs) is None

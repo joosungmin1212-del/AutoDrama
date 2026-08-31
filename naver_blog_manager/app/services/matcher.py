@@ -22,14 +22,22 @@ _ROLE_TO_OWNERSHIP = {
     BlogRole.STAFF.value: Ownership.OURS_STAFF.value,
 }
 
-# "이 블로그 계정 = 항상 이 소속"이라고 안전하게 확정할 수 있는 역할만 여기 넣는다.
-# 공식/직원 블로그는 계정 자체가 우리 소유라서 이 가정이 항상 맞지만, 체험단과 경쟁업체는
-# 안 맞다 - 같은 체험단 블로거가 이번 키워드에는 우리 글을 쓰고 다른 키워드에는 완전히
-# 다른 업체 글을 쓰는 경우가 흔하다(실제로 사용자가 지적한 문제). 그래서 이 두 역할은
-# 블로그 계정 단위로 ownership을 자동 확정하지 않고, 글(URL) 하나하나를 따로 판정한다
-# (content_match_service의 post_key 기반 판정을 그대로 씀) - 등록은 신원 표시(이름)
+# "이 블로그 계정 = 항상 우리 것"이라고 안전하게 확정할 수 있는 역할. 공식/직원 블로그는
+# 계정 자체가 우리 소유라서 이 가정이 항상 맞는다.
+_BLANKET_OURS_ROLES = {BlogRole.COMPANY.value, BlogRole.STAFF.value}
+
+# "이 블로그 계정 = 항상 남의 것"이라고 안전하게 확정할 수 있는 역할. 경쟁업체(주변 다른
+# 트레이너/PT샵의 본인 블로그)는 자기 업체 홍보가 계정의 존재 이유라서, 그 계정에서 우리
+# 얘기가 나올 일은 사실상 없다 - 매번 재확인 없이 계정 단위로 "확인된 타업체"로 못 박아도
+# 안전하다.
+_BLANKET_OTHER_ROLES = {BlogRole.COMPETITOR.value}
+
+# 체험단(BlogRole.EXPERIENCE)은 이 두 집합 어디에도 안 들어간다 - 같은 체험단 블로거가
+# 이번 키워드에는 우리 글을, 다른 키워드에는 완전히 다른 업체 글을 쓰는 경우가 흔해서
+# (실제로 사용자가 지적한 문제), 계정 단위로 "항상 우리 것"이라고 못 박으면 안 된다.
+# 그래서 체험단은 블로그 등록을 해도 match_ownership()에서 안 잡히고, 글(URL) 하나하나를
+# content_match_service의 post_key 기반 판정으로 따로 확인한다 - 등록은 신원 표시(이름)
 # 용도로만 쓰인다. 자세한 내용은 match_ownership()/find_known_identity() 참고.
-_BLANKET_OWNERSHIP_ROLES = {BlogRole.COMPANY.value, BlogRole.STAFF.value}
 
 
 def extract_identifier(url: str) -> str:
@@ -120,10 +128,12 @@ def find_name_match(title: str, watch_names: list[str]) -> str | None:
 def match_ownership(identifier: str, registered_blogs: list) -> tuple[str, object | None]:
     """등록된 블로그 목록과 대조해 (ownership, matched_blog) 반환.
 
-    공식/직원(_BLANKET_OWNERSHIP_ROLES) 블로그만 계정 단위로 ownership을 자동 확정한다.
-    체험단/경쟁업체로 등록된 블로그는 여기서 안 잡힌다 - 같은 계정이 키워드마다 다른
-    업체 글을 쓸 수 있어서, 계정 단위로 "항상 우리 것"/"항상 타업체"라고 못 박으면 안
-    되기 때문이다 (find_known_identity()로 신원 표시만 하고, 실제 판정은 글 단위로 함).
+    공식/직원(_BLANKET_OURS_ROLES) 블로그는 계정 단위로 "ours_*"를 자동 확정하고,
+    경쟁업체(_BLANKET_OTHER_ROLES)는 계정 단위로 "other"를 자동 확정한다(matched_blog는
+    채워서 반환 - 대시보드 표시 및 체험단 후보 판정 제외에 쓰인다). 체험단으로 등록된
+    블로그는 여기서 안 잡힌다 - 같은 계정이 키워드마다 다른 업체 글을 쓸 수 있어서, 계정
+    단위로 "항상 우리 것"이라고 못 박으면 안 되기 때문이다 (find_known_identity()로 신원
+    표시만 하고, 실제 판정은 글 단위로 함).
 
     registered_blogs: `.blog_id`, `.role` 속성을 가진 객체 리스트 (RegisteredBlog ORM 또는 동등한 dict-like).
     """
@@ -133,19 +143,25 @@ def match_ownership(identifier: str, registered_blogs: list) -> tuple[str, objec
     for rb in registered_blogs:
         rb_id = getattr(rb, "blog_id", "") or ""
         role = getattr(rb, "role", "")
-        if rb_id and rb_id.lower() == identifier.lower() and role in _BLANKET_OWNERSHIP_ROLES:
+        if not (rb_id and rb_id.lower() == identifier.lower()):
+            continue
+        if role in _BLANKET_OURS_ROLES:
             return _ROLE_TO_OWNERSHIP.get(role, Ownership.OTHER.value), rb
+        if role in _BLANKET_OTHER_ROLES:
+            return Ownership.OTHER.value, rb
 
     return Ownership.OTHER.value, None
 
 
 def find_known_identity(identifier: str, registered_blogs: list) -> object | None:
-    """블로그ID로 등록된 블로그를 역할 상관없이 찾는다 (체험단/경쟁업체 포함).
+    """블로그ID로 등록된 블로그를 역할 상관없이 찾는다.
 
-    match_ownership()과 달리 ownership 판정에는 전혀 관여하지 않고, "이 계정이 등록해둔
-    누구인지"를 대시보드에 표시하기 위한 용도로만 쓰인다 - 예: 아직 이 글 자체는 우리
-    것인지 판정 전(ownership="other")이라도, 등록해둔 체험단 블로거의 계정이라는 걸
-    미리 알려줘서 사람이 TOP7 상세보기에서 더 빨리 판단할 수 있게 돕는다.
+    match_ownership()이 이미 처리하는 공식/직원/경쟁업체는 여기서 다시 찾을 필요가
+    없으므로(check_keyword_rank에서 match_ownership이 못 찾았을 때만 호출됨), 실질적으로는
+    체험단(EXPERIENCE) 등록을 찾아내는 역할이다. ownership 판정에는 전혀 관여하지 않고,
+    "이 계정이 등록해둔 누구인지"를 대시보드에 표시하기 위한 용도로만 쓰인다 - 아직 이
+    글 자체는 우리 것인지 판정 전(ownership="other")이라도, 등록해둔 체험단 블로거의
+    계정이라는 걸 미리 알려줘서 사람이 TOP7 상세보기에서 더 빨리 판단할 수 있게 돕는다.
     """
     if not identifier:
         return None

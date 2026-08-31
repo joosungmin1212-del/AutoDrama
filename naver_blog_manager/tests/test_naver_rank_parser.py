@@ -291,3 +291,23 @@ async def test_check_keyword_rank_does_not_blanket_confirm_registered_experience
     assert matched.ownership == "other"
     assert matched.matched_blog is not None
     assert matched.matched_blog.name == "체험단A"
+
+
+@pytest.mark.asyncio
+async def test_check_keyword_rank_blanket_confirms_registered_competitor_blog(monkeypatch):
+    """경쟁업체는 체험단과 다르다 - 계정 자체가 그 업체의 자기 홍보용이라 우리 얘기가
+    나올 일이 사실상 없으므로, 등록해두면 계정 단위로 매번 재확인 없이 "확인된 타업체"로
+    자동 표시돼야 한다."""
+
+    async def fake_fetch(keyword, page=None, timeout_ms=15000):
+        return NOISY_FIXTURE_HTML
+
+    monkeypatch.setattr(naver_rank, "fetch_view_html", fake_fetch)
+
+    registered = [_FakeBlog("systempt_cw", "competitor", name="김민수 헬스타이거")]
+    items = await naver_rank.check_keyword_rank("서상동PT", registered_blogs=registered)
+
+    matched = next(i for i in items if i.blog_id == "systempt_cw")
+    assert matched.ownership == "other"
+    assert matched.matched_blog is not None
+    assert matched.matched_blog.name == "김민수 헬스타이거"
