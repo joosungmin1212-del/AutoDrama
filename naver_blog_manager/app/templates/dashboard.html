@@ -102,6 +102,7 @@
 <div class="modal-overlay" id="keyword-detail-modal" hidden>
   <div class="modal" style="max-width:600px;">
     <h3 id="keyword-detail-title">TOP7 글 목록</h3>
+    <div id="keyword-detail-alerts"></div>
     <p class="page-sub">
       제목에 업체명/직원 이름이 없으면 자동으로는 못 걸러내요 - 그런 체험단 글은 여기서 직접 "우리 체험단 맞음"으로 확정해두면
       다음부터 계속 우리 글로 표시됩니다.
@@ -116,7 +117,7 @@
 <!-- 키워드 추가 모달 -->
 <div class="modal-overlay" id="add-keyword-modal" hidden>
   <div class="modal">
-    <h3>키워드 추가</h3>
+    <h3 id="add-keyword-title">키워드 추가</h3>
     <form id="add-keyword-form">
       <div class="field">
         <label>키워드</label>
@@ -132,7 +133,7 @@
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" id="add-keyword-cancel">취소</button>
-        <button type="submit" class="btn btn-primary">추가</button>
+        <button type="submit" class="btn btn-primary" id="add-keyword-submit">추가</button>
       </div>
     </form>
   </div>

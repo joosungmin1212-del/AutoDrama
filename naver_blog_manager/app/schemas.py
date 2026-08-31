@@ -21,7 +21,7 @@ class SettingAiIn(BaseModel):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
-    rank_check_interval_hours: int = 24
+    rank_check_interval_hours: int = Field(default=24, ge=1)
     custom_prompt: str = ""  # 비워두면 기본 프롬프트 유지
 
 
@@ -102,6 +102,7 @@ class AlertOut(BaseModel):
     keyword_id: int
     keyword: str
     matched_blog_name: str | None
+    blog_id: str = ""  # 등록 안 된 블로그(체험단)의 이탈이면 이름 대신 이 값으로 표시
     previous_position: int | None
     detected_at: datetime
     resolved: bool
@@ -204,6 +205,9 @@ class WriterGenerateOut(BaseModel):
 
 class WriterSendIn(BaseModel):
     draft_id: int
+    # 미리보기에서 사용자가 고친 내용을 그대로 네이버로 보내기 위함 - 이게 없으면 화면에서
+    # 아무리 수정해도 서버에 저장된(=AI가 처음 생성한) 원본 초안이 그대로 전송돼버린다.
+    content: str = ""
 
 
 class WriterSendOut(BaseModel):

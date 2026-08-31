@@ -142,6 +142,10 @@ class Alert(Base):
     matched_blog_id_fk: Mapped[int | None] = mapped_column(
         ForeignKey("registered_blogs.id"), nullable=True
     )
+    # 등록된 블로그가 아닌(체험단 자동/수동 확정) 글이 이탈한 경우엔 matched_blog_id_fk가
+    # 없으므로, "어떤 블로그가 이탈했는지"를 다시 매칭하기 위해 blog_id 자체도 남겨둔다.
+    # 나중에 같은 blog_id가 TOP7에 다시 나타나면 이 값으로 이 알림을 자동으로 해소한다.
+    blog_id: Mapped[str] = mapped_column(String(200), default="")
     previous_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)

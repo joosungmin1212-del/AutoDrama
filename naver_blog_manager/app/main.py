@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .db import init_db
-from .routers import blogs, content_matches, dashboard, keywords, naver_auth, writer
+from .routers import alerts, blogs, content_matches, dashboard, keywords, naver_auth, writer
 from .routers import settings as settings_router
 from .services import access_token, naver_browser, scheduler as scheduler_service
 
@@ -30,10 +30,30 @@ _AUTH_DISABLED = os.getenv("NBM_DISABLE_AUTH") == "1"
 _LOGIN_GATED_PAGES = {"/", "/writer", "/blogs", "/settings"}
 
 
+def _load_configured_interval_hours() -> int:
+    """설정 화면에서 저장해둔 순위 자동 체크 주기를 읽는다.
+
+    (예전에는 이 값을 안 읽고 항상 기본값 24시간으로 스케줄러를 띄워서, 설정에서
+    주기를 바꿔도 실제로는 전혀 반영이 안 되는 버그가 있었다.)
+    """
+    from . import config
+    from .db import SessionLocal
+    from .models import Setting
+
+    db = SessionLocal()
+    try:
+        setting = db.get(Setting, 1)
+        if setting and setting.rank_check_interval_hours:
+            return setting.rank_check_interval_hours
+    finally:
+        db.close()
+    return config.DEFAULT_RANK_CHECK_INTERVAL_HOURS
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    scheduler_service.start_scheduler()
+    scheduler_service.start_scheduler(_load_configured_interval_hours())
     yield
     scheduler_service.shutdown_scheduler()
 
@@ -71,6 +91,7 @@ app.include_router(writer.router)
 app.include_router(naver_auth.router)
 app.include_router(settings_router.router)
 app.include_router(content_matches.router)
+app.include_router(alerts.router)
 
 
 def _set_token_cookie(response):

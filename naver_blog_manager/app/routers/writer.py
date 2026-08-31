@@ -81,6 +81,13 @@ async def send_to_naver(payload: schemas.WriterSendIn, db: Session = Depends(get
     if not draft:
         raise HTTPException(status_code=404, detail="초안을 찾을 수 없습니다.")
 
+    # 미리보기 화면에서 사용자가 내용을 고쳤을 수 있으므로, 그 최종본을 우선 사용한다
+    # (안 보내면 서버에 저장된 원본 초안이 그대로 나가버려 수정한 게 반영되지 않는다).
+    final_content = payload.content.strip() if payload.content.strip() else draft.content
+    if not final_content:
+        raise HTTPException(status_code=400, detail="보낼 내용이 비어 있습니다.")
+    draft.content = final_content
+
     company_blog = (
         db.query(models.RegisteredBlog)
         .filter(models.RegisteredBlog.role == models.BlogRole.COMPANY.value)
@@ -92,7 +99,7 @@ async def send_to_naver(payload: schemas.WriterSendIn, db: Session = Depends(get
             detail="공식 블로그가 등록되어 있지 않습니다. 블로그 관리 화면에서 먼저 등록해주세요.",
         )
 
-    body_with_tags = draft.content
+    body_with_tags = final_content
     if draft.hashtags:
         tags = " ".join(h.strip() for h in draft.hashtags.split(",") if h.strip())
         body_with_tags = f"{body_with_tags}\n\n{tags}"

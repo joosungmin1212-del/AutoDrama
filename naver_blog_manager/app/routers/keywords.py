@@ -38,6 +38,28 @@ def create_keyword(payload: schemas.KeywordIn, db: Session = Depends(get_db)):
     return keyword
 
 
+@router.put("/{keyword_id}", response_model=schemas.KeywordOut)
+def update_keyword(keyword_id: int, payload: schemas.KeywordIn, db: Session = Depends(get_db)):
+    """키워드 자체(오타 수정 포함)/카테고리/메모를 수정한다.
+
+    예전에는 이게 없어서 오타 하나 고치려 해도 삭제 후 재등록해야 했는데, 삭제는
+    그동안 쌓인 순위 조회 이력(RankCheck)까지 cascade로 같이 지워버려서 손해가 컸다.
+    """
+    keyword = db.get(models.Keyword, keyword_id)
+    if not keyword:
+        raise HTTPException(status_code=404, detail="키워드를 찾을 수 없습니다.")
+    keyword.keyword = payload.keyword.strip()
+    keyword.category = payload.category.strip()
+    keyword.memo = payload.memo.strip()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="이미 등록된 키워드입니다.")
+    db.refresh(keyword)
+    return keyword
+
+
 @router.delete("/{keyword_id}")
 def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
     keyword = db.get(models.Keyword, keyword_id)

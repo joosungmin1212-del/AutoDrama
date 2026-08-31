@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import openai_writer, secure_storage
+from ..services import openai_writer, scheduler as scheduler_service, secure_storage
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -59,8 +59,15 @@ def update_ai(payload: schemas.SettingAiIn, db: Session = Depends(get_db)):
     if payload.openai_api_key:  # 화면에 마스킹되어 오므로, 빈 값이면 기존 키를 그대로 유지
         setting.openai_api_key = secure_storage.protect(payload.openai_api_key)
     setting.openai_model = payload.openai_model
+    interval_changed = setting.rank_check_interval_hours != payload.rank_check_interval_hours
     setting.rank_check_interval_hours = payload.rank_check_interval_hours
     setting.custom_prompt = payload.custom_prompt
     db.commit()
     db.refresh(setting)
+
+    if interval_changed:
+        # 재시작 없이 바로 반영되도록 실행 중인 스케줄러 주기도 함께 바꾼다
+        # (예전에는 이 값이 저장만 되고 실제로는 안 쓰여서 항상 24시간 고정이었다).
+        scheduler_service.reschedule(setting.rank_check_interval_hours)
+
     return _to_out(setting)

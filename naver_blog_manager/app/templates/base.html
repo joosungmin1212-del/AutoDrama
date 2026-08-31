@@ -10,6 +10,7 @@
 <body>
   <div class="topbar">
     <div class="topbar__brand"><span class="dot"></span> 블로그 매니저</div>
+    {% if active_nav %}
     <nav class="topbar__nav">
       <a href="/" class="{{ 'active' if active_nav == 'dashboard' else '' }}">대시보드</a>
       <a href="/writer" class="{{ 'active' if active_nav == 'writer' else '' }}">글쓰기</a>
@@ -17,6 +18,7 @@
       <a href="/settings" class="{{ 'active' if active_nav == 'settings' else '' }}">설정</a>
       <a href="#" id="naver-logout-link" title="네이버 계정 로그아웃" style="color:var(--text-faint); font-size:12.5px; margin-left:6px; padding:8px 10px;">로그아웃</a>
     </nav>
+    {% endif %}
   </div>
   <div class="app-shell">
     {% block content %}{% endblock %}

@@ -44,6 +44,18 @@ def start_scheduler(interval_hours: int = config.DEFAULT_RANK_CHECK_INTERVAL_HOU
     return scheduler
 
 
+def reschedule(interval_hours: int) -> None:
+    """설정 화면에서 체크 주기를 바꾸면, 앱을 재시작하지 않아도 바로 반영되도록 한다.
+
+    (예전에는 이 함수가 없어서, 설정에 저장한 주기 값이 실제로는 전혀 쓰이지 않고
+    항상 기본값(24시간)으로만 동작하는 버그가 있었다.)
+    """
+    if _scheduler is None:
+        return
+    _scheduler.reschedule_job("rank_check_all", trigger="interval", hours=interval_hours)
+    logger.info("스케줄러 주기 변경: 매 %d시간마다", interval_hours)
+
+
 def shutdown_scheduler() -> None:
     global _scheduler
     if _scheduler is not None:

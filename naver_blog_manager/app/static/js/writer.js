@@ -86,7 +86,8 @@ document.getElementById("send-btn").addEventListener("click", async () => {
   try {
     const res = await apiFetch("/api/writer/send-to-naver", {
       method: "POST",
-      body: JSON.stringify({ draft_id: currentDraftId }),
+      // 미리보기에서 고친 내용을 그대로 보낸다 (서버에 저장된 원본 초안이 아니라).
+      body: JSON.stringify({ draft_id: currentDraftId, content: document.getElementById("content-box").value }),
     });
     showToast(res.message);
   } catch (e) {

@@ -161,6 +161,9 @@ function renderKeywordList() {
   listEl.querySelectorAll("[data-action='view-detail']").forEach((el) => {
     el.addEventListener("click", () => openKeywordDetail(Number(el.dataset.id)));
   });
+  listEl.querySelectorAll("[data-action='edit']").forEach((btn) => {
+    btn.addEventListener("click", () => openEditKeywordModal(Number(btn.dataset.id)));
+  });
 
   if (draggable) {
     setupDragAndDrop(listEl);
@@ -220,6 +223,7 @@ function renderKeywordCard(k, draggable) {
       </div>
       <button class="icon-btn" data-action="refresh" data-id="${k.id}" title="순위 갱신">↻</button>
       <button class="btn-write" data-action="write" data-keyword="${escapeHtml(k.keyword)}">✎ 글 작성</button>
+      <button class="icon-btn" data-action="edit" data-id="${k.id}" title="키워드/카테고리/메모 수정">🖊</button>
       <button class="icon-btn icon-btn--danger" data-action="delete" data-id="${k.id}" data-keyword="${escapeHtml(
         k.keyword
       )}" title="삭제">🗑</button>
@@ -299,33 +303,70 @@ async function deleteKeyword(id, keyword) {
   }
 }
 
+// 키워드 추가 모달은 "수정"에도 그대로 재사용한다 (editingKeywordId가 있으면 PUT, 없으면 POST).
+let editingKeywordId = null;
+
+function openEditKeywordModal(keywordId) {
+  const k = dashboardData.keywords.find((kw) => kw.id === keywordId);
+  if (!k) return;
+  editingKeywordId = keywordId;
+
+  const form = document.getElementById("add-keyword-form");
+  form.keyword.value = k.keyword;
+  form.category.value = k.category || "";
+  form.memo.value = k.memo || "";
+
+  document.getElementById("add-keyword-title").textContent = "키워드 수정";
+  document.getElementById("add-keyword-submit").textContent = "저장";
+  document.getElementById("add-keyword-modal").hidden = false;
+}
+
 function setupAddKeywordModal() {
   const modal = document.getElementById("add-keyword-modal");
   const openBtn = document.getElementById("add-keyword-btn");
   const cancelBtn = document.getElementById("add-keyword-cancel");
   const form = document.getElementById("add-keyword-form");
 
-  openBtn.addEventListener("click", () => (modal.hidden = false));
-  cancelBtn.addEventListener("click", () => (modal.hidden = true));
+  function resetToAddMode() {
+    editingKeywordId = null;
+    form.reset();
+    document.getElementById("add-keyword-title").textContent = "키워드 추가";
+    document.getElementById("add-keyword-submit").textContent = "추가";
+  }
+
+  openBtn.addEventListener("click", () => {
+    resetToAddMode();
+    modal.hidden = false;
+  });
+  cancelBtn.addEventListener("click", () => {
+    modal.hidden = true;
+    resetToAddMode();
+  });
   modal.addEventListener("click", (e) => {
-    if (e.target === modal) modal.hidden = true;
+    if (e.target === modal) {
+      modal.hidden = true;
+      resetToAddMode();
+    }
   });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
+    const payload = {
+      keyword: fd.get("keyword"),
+      category: fd.get("category") || "",
+      memo: fd.get("memo") || "",
+    };
     try {
-      await apiFetch("/api/keywords", {
-        method: "POST",
-        body: JSON.stringify({
-          keyword: fd.get("keyword"),
-          category: fd.get("category") || "",
-          memo: fd.get("memo") || "",
-        }),
-      });
-      form.reset();
+      if (editingKeywordId !== null) {
+        await apiFetch(`/api/keywords/${editingKeywordId}`, { method: "PUT", body: JSON.stringify(payload) });
+        showToast("키워드를 수정했습니다.");
+      } else {
+        await apiFetch("/api/keywords", { method: "POST", body: JSON.stringify(payload) });
+        showToast("키워드를 추가했습니다.");
+      }
       modal.hidden = true;
-      showToast("키워드를 추가했습니다.");
+      resetToAddMode();
       await loadDashboard();
       await loadOnboarding();
     } catch (e) {
@@ -423,6 +464,47 @@ function openKeywordDetail(keywordId) {
   document.getElementById("keyword-detail-title").textContent = `"${k.keyword}" TOP7 글 목록`;
   document.getElementById("keyword-detail-modal").hidden = false;
   renderKeywordDetailList(k);
+  loadKeywordDetailAlerts(keywordId);
+}
+
+async function loadKeywordDetailAlerts(keywordId) {
+  const box = document.getElementById("keyword-detail-alerts");
+  box.innerHTML = "";
+  let alertsList;
+  try {
+    alertsList = await apiFetch(`/api/alerts?status=open&keyword_id=${keywordId}`);
+  } catch (e) {
+    return; // 알림 조회 실패는 조용히 무시 - TOP7 목록은 그대로 보여준다
+  }
+  if (alertsList.length === 0) return;
+
+  box.innerHTML = `
+    <div class="alert-box">
+      <div class="alert-box__title">⚠ 이탈 알림 ${alertsList.length}건</div>
+      ${alertsList
+        .map(
+          (a) => `
+        <div class="alert-box__row">
+          <span>${escapeHtml(a.matched_blog_name || a.blog_id || "알 수 없음")} - 이전 ${
+            a.previous_position
+          }위에 있었는데 지금은 안 보여요 (${formatDateTime(a.detected_at)} 감지)</span>
+          <button class="btn btn-outline" data-resolve-alert="${a.id}" style="padding:4px 10px; font-size:12px;">확인 완료</button>
+        </div>`
+        )
+        .join("")}
+    </div>`;
+
+  box.querySelectorAll("[data-resolve-alert]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiFetch(`/api/alerts/${btn.dataset.resolveAlert}/resolve`, { method: "POST" });
+        await loadDashboard();
+        loadKeywordDetailAlerts(keywordId);
+      } catch (e) {
+        showToast(e.message, true);
+      }
+    });
+  });
 }
 
 function renderKeywordDetailList(k) {

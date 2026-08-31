@@ -27,6 +27,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 _COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
     "keywords": [("sort_order", "INTEGER DEFAULT 0")],
     "settings": [("custom_prompt", "TEXT DEFAULT ''")],
+    "alerts": [("blog_id", "VARCHAR(200) DEFAULT ''")],
 }
 
 

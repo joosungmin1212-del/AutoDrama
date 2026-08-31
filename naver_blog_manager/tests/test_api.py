@@ -22,6 +22,29 @@ def test_keyword_crud(client):
     assert client.get("/api/keywords").json() == []
 
 
+def test_keyword_update(client):
+    """오타 수정 등을 위해 삭제 후 재등록(=이력 손실) 없이 그대로 고칠 수 있어야 한다."""
+    kw_id = client.post("/api/keywords", json={"keyword": "서상둥PT", "category": "메인"}).json()["id"]
+
+    r = client.put(f"/api/keywords/{kw_id}", json={"keyword": "서상동PT", "category": "핵심", "memo": "오타 수정"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["keyword"] == "서상동PT"
+    assert body["category"] == "핵심"
+    assert body["memo"] == "오타 수정"
+
+    r = client.put("/api/keywords/999", json={"keyword": "없음"})
+    assert r.status_code == 404
+
+
+def test_keyword_update_rejects_duplicate_name(client):
+    client.post("/api/keywords", json={"keyword": "키워드A"})
+    kw_b = client.post("/api/keywords", json={"keyword": "키워드B"}).json()["id"]
+
+    r = client.put(f"/api/keywords/{kw_b}", json={"keyword": "키워드A"})
+    assert r.status_code == 400
+
+
 def test_blog_crud_and_invalid_url(client):
     r = client.post(
         "/api/blogs",
@@ -124,6 +147,31 @@ def test_settings_profile_and_ai_are_independent(client):
     # 빈 값으로 다시 PUT하면 기존 키가 유지되어야 한다
     r = client.put("/api/settings/ai", json={"openai_api_key": "", "rank_check_interval_hours": 12})
     assert r.json()["openai_api_key_set"] is True
+
+
+def test_settings_ai_reschedules_scheduler_when_interval_changes(client, monkeypatch):
+    """설정에서 순위 자동 체크 주기를 바꾸면, 실행 중인 스케줄러도 재시작 없이 반영돼야 한다.
+
+    예전에는 이 값이 DB에 저장만 되고 실제 스케줄러는 항상 기본값(24시간)으로 고정 동작하는
+    버그가 있었다."""
+    from app.routers import settings as settings_router
+
+    calls = []
+    monkeypatch.setattr(settings_router.scheduler_service, "reschedule", lambda hours: calls.append(hours))
+
+    # 기본값(24)과 같은 값으로 저장하면 재조정할 필요가 없다
+    client.put("/api/settings/ai", json={"rank_check_interval_hours": 24})
+    assert calls == []
+
+    # 다른 값으로 바꾸면 reschedule이 호출돼야 한다
+    r = client.put("/api/settings/ai", json={"rank_check_interval_hours": 6})
+    assert r.status_code == 200
+    assert calls == [6]
+
+
+def test_settings_ai_rejects_non_positive_interval(client):
+    r = client.put("/api/settings/ai", json={"rank_check_interval_hours": 0})
+    assert r.status_code == 422
 
 
 def test_settings_prompt_defaults_and_custom_persists(client):

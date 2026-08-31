@@ -14,6 +14,29 @@ from .. import config, models
 from . import content_match_service, naver_rank
 
 
+def _resolve_recovered_alerts(db: Session, keyword_id: int, current_items: list) -> None:
+    """이탈 알림이 떴던 글(블로그)이 다시 TOP7에 나타나면 그 알림을 자동으로 해소한다.
+
+    예전에는 이걸 하는 코드가 아예 없어서, 한 번 뜬 "이탈 알림"이 문제가 해결된 뒤에도
+    영원히 열려있는 상태로 남아 대시보드 배너의 카운트가 계속 쌓이기만 하는 버그가 있었다.
+    """
+    recovered_blog_ids = {
+        item.blog_id.lower() for item in current_items if item.blog_id and item.ownership.startswith("ours_")
+    }
+    if not recovered_blog_ids:
+        return
+
+    open_alerts = (
+        db.query(models.Alert)
+        .filter(models.Alert.keyword_id == keyword_id, models.Alert.resolved.is_(False))
+        .all()
+    )
+    for alert in open_alerts:
+        if alert.blog_id and alert.blog_id.lower() in recovered_blog_ids:
+            alert.resolved = True
+            alert.resolved_at = datetime.utcnow()
+
+
 def _load_previous_items(db: Session, keyword_id: int) -> list[naver_rank.RankItem]:
     previous_check = (
         db.query(models.RankCheck)
@@ -68,6 +91,8 @@ async def run_rank_check_async(
             )
         )
 
+    _resolve_recovered_alerts(db, keyword.id, items)
+
     dropped = naver_rank.detect_dropouts(previous_items, items)
     blog_by_id = {rb.blog_id.lower(): rb for rb in registered_blogs if rb.blog_id}
     for d in dropped:
@@ -76,6 +101,7 @@ async def run_rank_check_async(
             models.Alert(
                 keyword_id=keyword.id,
                 matched_blog_id_fk=getattr(matched_blog, "id", None),
+                blog_id=d.blog_id,
                 previous_position=d.position,
                 detected_at=datetime.utcnow(),
             )
