@@ -853,7 +853,15 @@ async function loadOnboarding() {
         },
       },
       { label: "OpenAI API 키 설정", done: settings.openai_api_key_set, href: "/settings" },
-      { label: "블로그 등록 (내 블로그 최소 1개)", done: blogs.length > 0, href: "/blogs" },
+      {
+        // "직원"/"체험단" 등록만으로는 체크가 안 된다 - "네이버로 보내기"는 반드시
+        // "공식 블로그"로 등록된 계정만 쓰기 때문에, 실제로는 다른 역할로만 블로그를
+        // 등록해놓고 이 항목이 완료로 표시돼서 "다 됐다"고 착각하다가, 정작 글쓰기에서
+        // "공식 블로그가 없습니다" 오류를 만나는 문제가 실제로 있었다.
+        label: "공식 블로그 등록 (네이버로 보내기에 쓸 내 계정)",
+        done: blogs.some((b) => b.role === "company"),
+        href: "/blogs",
+      },
       {
         label: "키워드 추가",
         done: dash.keywords.length > 0,
