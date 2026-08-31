@@ -62,6 +62,7 @@ class Setting(Base):
     openai_api_key: Mapped[str] = mapped_column(String(300), default="")
     openai_model: Mapped[str] = mapped_column(String(100), default="gpt-4o-mini")
     rank_check_interval_hours: Mapped[int] = mapped_column(Integer, default=24)
+    custom_prompt: Mapped[str] = mapped_column(Text, default="")  # 비어있으면 기본 프롬프트 사용
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )

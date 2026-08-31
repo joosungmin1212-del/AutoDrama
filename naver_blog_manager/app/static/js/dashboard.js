@@ -30,23 +30,6 @@ function renderStats(stats) {
     "stat-monitored-sub"
   ).textContent = `개 등록 관리 중 · 이탈 알림 ${stats.open_alert_count}건`;
 
-  document.getElementById(
-    "stat-share"
-  ).innerHTML = `${stats.our_total} / ${stats.our_slots_total} <small>(${pct(
-    stats.our_total,
-    stats.our_slots_total
-  )}%)</small>`;
-  document.getElementById("stat-share-bar").style.width = `${pct(stats.our_total, stats.our_slots_total)}%`;
-
-  document.getElementById("stat-staff").textContent = stats.staff_exposure_count;
-  document.getElementById("stat-staff-sub").textContent = breakdownText(stats.staff_breakdown, "개 포스팅 노출 중");
-
-  document.getElementById("stat-experience").textContent = stats.experience_exposure_count;
-  document.getElementById("stat-experience-sub").textContent = breakdownText(
-    stats.experience_breakdown,
-    "개 후기 노출 중"
-  );
-
   const btn = document.getElementById("content-match-btn");
   btn.textContent = `🕵️ 체험단 확인 필요 (${stats.pending_content_match_count})`;
   btn.classList.toggle("filter-tab--alert", stats.pending_content_match_count > 0);
@@ -55,13 +38,6 @@ function renderStats(stats) {
 function pct(n, total) {
   if (!total) return 0;
   return Math.round((n / total) * 100);
-}
-
-function breakdownText(breakdown, suffix) {
-  const entries = Object.entries(breakdown || {});
-  if (entries.length === 0) return `${suffix}`;
-  const detail = entries.map(([name, count]) => `${name} ${count}건`).join(" · ");
-  return `${suffix} · ${detail}`;
 }
 
 function renderFilterTabs(keywords, stats) {
@@ -403,6 +379,40 @@ document.getElementById("refresh-all-btn").addEventListener("click", async (e) =
   }
 });
 
+// ---------- 업체 프로필 (접이식) ----------
+async function loadProfile() {
+  try {
+    const s = await apiFetch("/api/settings");
+    const form = document.getElementById("profile-form");
+    form.business_name.value = s.business_name || "";
+    form.address.value = s.address || "";
+    form.phone.value = s.phone || "";
+    form.strengths.value = s.strengths || "";
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+document.getElementById("profile-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  try {
+    await apiFetch("/api/settings/profile", {
+      method: "PUT",
+      body: JSON.stringify({
+        business_name: fd.get("business_name") || "",
+        address: fd.get("address") || "",
+        phone: fd.get("phone") || "",
+        strengths: fd.get("strengths") || "",
+      }),
+    });
+    showToast("업체 프로필을 저장했습니다.");
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
 setupAddKeywordModal();
 setupContentMatchModal();
 loadDashboard();
+loadProfile();

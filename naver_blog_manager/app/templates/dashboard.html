@@ -2,26 +2,43 @@
 {% block title %}대시보드 - PT샵 네이버 블로그 매니저{% endblock %}
 {% block content %}
 
-<div class="stat-grid" id="stat-grid">
+<!-- 업체 프로필: 자주 바꾸는 게 아니라서 기본은 접어둔다 -->
+<details class="page-card" id="profile-details" style="margin-bottom:16px;">
+  <summary style="cursor:pointer; font-weight:800; font-size:14.5px; color:var(--text-muted);">
+    🏋️ 업체 프로필 (펼치기 - 글쓰기 AI가 참고하는 정보예요)
+  </summary>
+  <form id="profile-form" style="margin-top:16px;">
+    <div class="two-col">
+      <div>
+        <div class="field">
+          <label>업체명</label>
+          <input type="text" name="business_name" placeholder="예: OO PT샵 서상동점" />
+        </div>
+        <div class="field">
+          <label>주소/지역</label>
+          <input type="text" name="address" placeholder="예: 대구 달서구 서상동" />
+        </div>
+      </div>
+      <div>
+        <div class="field">
+          <label>전화번호</label>
+          <input type="text" name="phone" placeholder="예: 010-0000-0000" />
+        </div>
+        <div class="field">
+          <label>강점/차별점</label>
+          <textarea name="strengths" rows="2" placeholder="예: 재활 트레이닝 전문, 1:1 맞춤 관리"></textarea>
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="padding:9px 22px;">저장</button>
+  </form>
+</details>
+
+<div class="stat-grid" id="stat-grid" style="grid-template-columns: minmax(220px, 320px);">
   <div class="stat-card">
     <div class="stat-card__head">모니터링 키워드 <span class="stat-card__icon">📚</span></div>
     <div class="stat-card__value" id="stat-monitored">-</div>
     <div class="stat-card__sub" id="stat-monitored-sub">개 등록 관리 중</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__head">TOP 7 총 점유율 <span class="stat-card__icon">🔥</span></div>
-    <div class="stat-card__value" id="stat-share">- / -</div>
-    <div class="stat-card__bar"><div class="stat-card__bar-fill" id="stat-share-bar" style="width:0%"></div></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__head">직원(트레이너) 상위노출 <span class="stat-card__icon">🧑‍🤝‍🧑</span></div>
-    <div class="stat-card__value" id="stat-staff">-</div>
-    <div class="stat-card__sub" id="stat-staff-sub">개 포스팅 노출 중</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__head">체험단 / 서포터즈 점유 <span class="stat-card__icon stat-card__icon--purple">👑</span></div>
-    <div class="stat-card__value" id="stat-experience">-</div>
-    <div class="stat-card__sub" id="stat-experience-sub">개 후기 노출 중</div>
   </div>
 </div>
 

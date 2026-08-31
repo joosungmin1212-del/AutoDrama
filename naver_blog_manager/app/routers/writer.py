@@ -38,6 +38,7 @@ def generate(payload: schemas.WriterGenerateIn, db: Session = Depends(get_db)):
             keyword=payload.keyword,
             extra_request=payload.extra_request,
             profile=profile,
+            system_prompt=setting.custom_prompt or None,
         )
     except openai_writer.WriterError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

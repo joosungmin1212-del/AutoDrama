@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}네이버 로그인 - PT샵 네이버 블로그 매니저{% endblock %}
+{% block content %}
+
+<div class="page-card" style="max-width:480px; margin: 60px auto; text-align:center;">
+  <h2 class="page-title">🔐 네이버 로그인이 필요합니다</h2>
+  <p class="page-sub">
+    순위 조회, 글쓰기 자동화를 쓰려면 먼저 네이버 계정으로 로그인해주세요.<br />
+    아이디/비밀번호는 저장하지 않고, 로그인 세션만 암호화해서 이 PC에만 보관합니다.
+  </p>
+  <button class="btn btn-primary" id="naver-login-btn" style="width:100%; justify-content:center; padding:12px; margin-top:6px;">
+    네이버 로그인하기
+  </button>
+  <p class="page-sub" id="login-status-msg" style="margin-top:14px; min-height:18px;"></p>
+</div>
+
+{% endblock %}
+{% block extra_scripts %}
+<script src="/static/js/login.js"></script>
+{% endblock %}

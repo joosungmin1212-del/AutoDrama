@@ -50,3 +50,19 @@ function formatDateTime(iso) {
     d.getMinutes()
   )}`;
 }
+
+// 모든 페이지 공통: 상단 "로그아웃" 링크 (네이버 로그인 화면으로 되돌아간다)
+document.addEventListener("DOMContentLoaded", () => {
+  const logoutLink = document.getElementById("naver-logout-link");
+  if (!logoutLink) return;
+  logoutLink.addEventListener("click", async (e) => {
+    e.preventDefault();
+    if (!confirm("네이버 로그아웃 할까요? 다음에 쓰려면 다시 로그인해야 합니다.")) return;
+    try {
+      await apiFetch("/api/naver-auth/logout", { method: "POST" });
+      window.location.href = "/login";
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  });
+});

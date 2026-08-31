@@ -109,6 +109,7 @@ def generate_post(
     keyword: str | None,
     extra_request: str,
     profile: BusinessProfile,
+    system_prompt: str | None = None,
 ) -> GeneratedPost:
     if not api_key:
         raise WriterError("OpenAI API 키가 설정되어 있지 않습니다. 설정 화면에서 입력해주세요.")
@@ -121,7 +122,7 @@ def generate_post(
     response = client.chat.completions.create(
         model=model or config.DEFAULT_OPENAI_MODEL,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt or SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.8,

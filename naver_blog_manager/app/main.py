@@ -7,14 +7,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .db import init_db
 from .routers import blogs, content_matches, dashboard, keywords, naver_auth, writer
 from .routers import settings as settings_router
-from .services import access_token, scheduler as scheduler_service
+from .services import access_token, naver_browser, scheduler as scheduler_service
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -25,6 +25,9 @@ BASE_DIR = Path(__file__).resolve().parent
 APP_TOKEN = access_token.get_or_create_token()
 TOKEN_COOKIE_NAME = "nbm_token"
 _AUTH_DISABLED = os.getenv("NBM_DISABLE_AUTH") == "1"
+
+# 네이버 로그인이 안 되어 있으면 이 페이지들 대신 /login으로 보낸다 (로그인이 앱의 첫 관문).
+_LOGIN_GATED_PAGES = {"/", "/writer", "/blogs", "/settings"}
 
 
 @asynccontextmanager
@@ -49,6 +52,13 @@ app.include_router(settings_router.router)
 app.include_router(content_matches.router)
 
 
+def _set_token_cookie(response):
+    response.set_cookie(
+        TOKEN_COOKIE_NAME, APP_TOKEN, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30
+    )
+    return response
+
+
 @app.middleware("http")
 async def local_token_guard(request: Request, call_next):
     """run.py가 열어준 브라우저인지 확인한다 (토큰 쿠키/헤더/쿼리스트링 중 하나로 인증)."""
@@ -69,15 +79,26 @@ async def local_token_guard(request: Request, call_next):
             content={"detail": "인증이 필요합니다. run.py(2-start.bat)로 연 창에서 다시 접속해주세요."},
         )
 
+    # 네이버 로그인 세션이 아예 없으면, 실제 페이지 대신 로그인 화면으로 먼저 보낸다.
+    if (
+        authorized
+        and request.url.path in _LOGIN_GATED_PAGES
+        and not naver_browser.has_saved_session()
+    ):
+        return _set_token_cookie(RedirectResponse(url="/login"))
+
     response = await call_next(request)
 
     # 정상 토큰으로 페이지에 처음 들어온 경우, 이후 요청부터는 쿼리스트링 없이도 되도록
     # 쿠키를 심어준다 (탭 안에서의 페이지 이동/새로고침에 계속 토큰을 붙일 필요가 없게).
     if authorized and not request.url.path.startswith("/api/"):
-        response.set_cookie(
-            TOKEN_COOKIE_NAME, APP_TOKEN, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 30
-        )
+        _set_token_cookie(response)
     return response
+
+
+@app.get("/login")
+def login_page(request: Request):
+    return templates.TemplateResponse(request, "login.html", {"active_nav": ""})
 
 
 @app.get("/")

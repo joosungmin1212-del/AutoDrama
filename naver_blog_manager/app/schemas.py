@@ -7,21 +7,35 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---------- Settings ----------
-class SettingIn(BaseModel):
+class SettingProfileIn(BaseModel):
+    """업체 프로필만 수정 (대시보드의 접이식 카드에서 저장)."""
+
     business_name: str = ""
     address: str = ""
     phone: str = ""
     strengths: str = ""
+
+
+class SettingAiIn(BaseModel):
+    """AI/글쓰기 관련 설정만 수정 (설정 화면에서 저장)."""
+
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     rank_check_interval_hours: int = 24
+    custom_prompt: str = ""  # 비워두면 기본 프롬프트 유지
 
 
-class SettingOut(SettingIn):
-    # 프론트에 그대로 키를 노출하면 위험하니 마스킹된 값만 내려준다.
+class SettingOut(BaseModel):
+    business_name: str = ""
+    address: str = ""
+    phone: str = ""
+    strengths: str = ""
+    openai_model: str = "gpt-4o-mini"
+    rank_check_interval_hours: int = 24
+    custom_prompt: str = ""  # 현재 적용 중인 프롬프트 (커스텀 없으면 기본값이 그대로 옴)
+    default_prompt: str = ""  # "기본값으로 되돌리기" 버튼용 - 항상 원래 기본 프롬프트
+    # 프론트에 API 키 원문을 그대로 내려주면 위험하니, 설정 여부만 알려준다.
     openai_api_key_set: bool = False
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------- Registered Blog ----------

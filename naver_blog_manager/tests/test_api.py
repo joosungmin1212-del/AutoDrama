@@ -74,7 +74,7 @@ def test_keyword_reorder(client):
 
 
 def test_content_match_flow(client):
-    client.put("/api/settings", json={"business_name": "OO PT샵", "openai_api_key": "", "rank_check_interval_hours": 24})
+    client.put("/api/settings/ai", json={"openai_api_key": "", "rank_check_interval_hours": 24})
 
     # 순위조회 없이 직접 API로는 content-match가 안 생기니, 서비스 계층 없이 라우트만 검증한다
     r = client.get("/api/content-matches?status=pending")
@@ -88,42 +88,43 @@ def test_content_match_flow(client):
     assert r.status_code == 422
 
 
-def test_settings_masks_api_key(client):
+def test_settings_profile_and_ai_are_independent(client):
+    r = client.put("/api/settings/profile", json={"business_name": "OO PT샵"})
+    assert r.status_code == 200
+    assert r.json()["business_name"] == "OO PT샵"
+
     r = client.put(
-        "/api/settings",
-        json={
-            "business_name": "OO PT샵",
-            "openai_api_key": "sk-secret-key",
-            "openai_model": "gpt-4o-mini",
-            "rank_check_interval_hours": 12,
-        },
+        "/api/settings/ai",
+        json={"openai_api_key": "sk-secret-key", "openai_model": "gpt-4o-mini", "rank_check_interval_hours": 12},
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["openai_api_key"] == ""
+    assert "openai_api_key" not in body  # 원문은 응답에 아예 없어야 한다
     assert body["openai_api_key_set"] is True
-    assert body["business_name"] == "OO PT샵"
+    assert body["business_name"] == "OO PT샵"  # AI 설정 저장이 프로필을 건드리면 안 됨
 
     # 빈 값으로 다시 PUT하면 기존 키가 유지되어야 한다
-    r = client.put(
-        "/api/settings",
-        json={"business_name": "OO PT샵 2", "openai_api_key": "", "rank_check_interval_hours": 12},
-    )
+    r = client.put("/api/settings/ai", json={"openai_api_key": "", "rank_check_interval_hours": 12})
     assert r.json()["openai_api_key_set"] is True
 
 
-def test_writer_generate_uses_settings_profile(client, monkeypatch):
-    client.put(
-        "/api/settings",
-        json={
-            "business_name": "OO PT샵",
-            "openai_api_key": "sk-test",
-            "openai_model": "gpt-4o-mini",
-            "rank_check_interval_hours": 24,
-        },
-    )
+def test_settings_prompt_defaults_and_custom_persists(client):
+    body = client.get("/api/settings").json()
+    assert body["custom_prompt"] == body["default_prompt"]  # 커스텀 안 했으면 기본값이 그대로 보임
+    assert len(body["default_prompt"]) > 0
 
-    def fake_generate_post(api_key, model, title, keyword, extra_request, profile):
+    r = client.put("/api/settings/ai", json={"custom_prompt": "나만의 프롬프트입니다"})
+    assert r.json()["custom_prompt"] == "나만의 프롬프트입니다"
+
+    # 다시 조회해도 커스텀 값이 남아있어야 한다
+    assert client.get("/api/settings").json()["custom_prompt"] == "나만의 프롬프트입니다"
+
+
+def test_writer_generate_uses_settings_profile(client, monkeypatch):
+    client.put("/api/settings/profile", json={"business_name": "OO PT샵"})
+    client.put("/api/settings/ai", json={"openai_api_key": "sk-test", "openai_model": "gpt-4o-mini"})
+
+    def fake_generate_post(api_key, model, title, keyword, extra_request, profile, system_prompt=None):
         assert api_key == "sk-test"
         assert profile.business_name == "OO PT샵"
         return openai_writer.GeneratedPost(

@@ -2,63 +2,44 @@
 {% block title %}설정 - PT샵 네이버 블로그 매니저{% endblock %}
 {% block content %}
 
-<div class="two-col">
-  <div class="page-card">
-    <h2 class="page-title">🏋️ 업체 프로필</h2>
-    <p class="page-sub">글 생성 시 자연스럽게 반영됩니다.</p>
-    <form id="settings-form">
-      <div class="field">
-        <label>업체명</label>
-        <input type="text" name="business_name" placeholder="예: OO PT샵 서상동점" />
-      </div>
-      <div class="field">
-        <label>주소/지역</label>
-        <input type="text" name="address" placeholder="예: 대구 달서구 서상동" />
-      </div>
-      <div class="field">
-        <label>전화번호</label>
-        <input type="text" name="phone" placeholder="예: 010-0000-0000" />
-      </div>
-      <div class="field">
-        <label>강점/차별점</label>
-        <textarea name="strengths" rows="3" placeholder="예: 재활 트레이닝 전문, 1:1 맞춤 관리, 주차 가능"></textarea>
-      </div>
+<div class="page-card" style="max-width:760px; margin:0 auto;">
+  <h2 class="page-title">🤖 AI 설정</h2>
+  <p class="page-sub">블로그 글 생성에 쓰는 OpenAI 키와, AI가 글을 쓸 때 따르는 규칙(프롬프트)을 관리합니다.</p>
 
-      <hr style="border:none; border-top:1px solid var(--border); margin:18px 0;" />
-
-      <div class="field">
-        <label>OpenAI API 키 <span id="key-status" class="status-pill off">미설정</span></label>
-        <input type="password" name="openai_api_key" placeholder="새 키를 입력하면 교체됩니다 (비우면 기존 키 유지)" />
-      </div>
-      <div class="field">
-        <label>OpenAI 모델</label>
-        <input type="text" name="openai_model" placeholder="gpt-4o-mini" />
-      </div>
-      <div class="field">
-        <label>순위 자동 체크 주기 (시간)</label>
-        <input type="number" name="rank_check_interval_hours" min="1" />
-      </div>
-
-      <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; padding:11px;">저장</button>
-    </form>
-  </div>
-
-  <div class="page-card">
-    <h2 class="page-title">🔐 네이버 계정 연동</h2>
-    <p class="page-sub">
-      실제 브라우저 창이 열리면 <b>직접 로그인</b>해주세요. 아이디/비밀번호는 저장하지 않고, 로그인 세션만 안전하게 보관합니다.
-    </p>
-
-    <p>현재 상태: <span id="naver-status" class="status-pill off">확인 중...</span></p>
-
-    <div style="display:flex; gap:8px; margin-top:14px;">
-      <button class="btn btn-primary" id="naver-login-btn" style="flex:1; justify-content:center;">네이버 로그인</button>
-      <button class="btn btn-outline" id="naver-logout-btn" style="flex:1; justify-content:center;">로그아웃</button>
+  <form id="ai-settings-form">
+    <div class="field">
+      <label>OpenAI API 키 <span id="key-status" class="status-pill off">미설정</span></label>
+      <input type="password" name="openai_api_key" autocomplete="new-password" placeholder="새 키를 입력하면 교체됩니다 (비우면 기존 키 유지)" />
     </div>
-    <p class="page-sub" style="margin-top:14px;">
-      ※ 이 서버가 실행 중인 PC(화면이 있는 환경)에서만 로그인 창이 뜹니다.
-    </p>
-  </div>
+    <div class="field">
+      <label>OpenAI 모델</label>
+      <input type="text" name="openai_model" placeholder="gpt-4o-mini" />
+    </div>
+    <div class="field">
+      <label>순위 자동 체크 주기 (시간)</label>
+      <input type="number" name="rank_check_interval_hours" min="1" />
+    </div>
+
+    <hr style="border:none; border-top:1px solid var(--border); margin:20px 0;" />
+
+    <div class="field">
+      <label>✍️ AI 글쓰기 프롬프트</label>
+      <p class="page-sub" style="margin:0 0 8px;">
+        기본값 그대로 써도 됩니다. 수정하고 저장하면 그 다음부터는 이 내용대로 글이 생성됩니다.
+      </p>
+      <textarea
+        name="custom_prompt"
+        id="prompt-textarea"
+        rows="16"
+        style="font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size:12.5px; line-height:1.6;"
+      ></textarea>
+    </div>
+    <div style="margin-bottom:16px;">
+      <button type="button" class="btn btn-outline" id="prompt-reset-btn">프롬프트 기본값으로 되돌리기</button>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; padding:11px;">저장</button>
+  </form>
 </div>
 
 {% endblock %}

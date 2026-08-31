@@ -26,6 +26,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 # 업데이트 후에도 깨지지 않도록 여기서 부족한 컬럼만 최소한으로 보충한다.
 _COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
     "keywords": [("sort_order", "INTEGER DEFAULT 0")],
+    "settings": [("custom_prompt", "TEXT DEFAULT ''")],
 }
 
 
