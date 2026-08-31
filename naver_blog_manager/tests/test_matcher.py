@@ -58,3 +58,13 @@ def test_match_ownership_empty_identifier():
     ownership, matched = matcher.match_ownership("", [FakeBlog("x", BlogRole.STAFF.value)])
     assert ownership == Ownership.OTHER.value
     assert matched is None
+
+
+def test_match_ownership_competitor_is_other_but_still_returns_matched_blog():
+    """경쟁업체로 미리 등록해둔 블로그는 "우리 것"은 아니지만(ownership=other), 어떤
+    경쟁업체인지는 대시보드에 계속 표시돼야 하므로 matched 객체는 그대로 반환돼야 한다."""
+    blogs = [FakeBlog("rival_trainer", BlogRole.COMPETITOR.value, "김민수 헬스타이거")]
+    ownership, matched = matcher.match_ownership("rival_trainer", blogs)
+    assert ownership == Ownership.OTHER.value
+    assert matched is not None
+    assert matched.name == "김민수 헬스타이거"

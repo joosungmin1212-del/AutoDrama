@@ -42,7 +42,7 @@ class SettingOut(BaseModel):
 class RegisteredBlogIn(BaseModel):
     name: str
     blog_url: str
-    role: str = Field(pattern="^(company|staff|experience)$", default="staff")
+    role: str = Field(pattern="^(company|staff|experience|competitor)$", default="staff")
     memo: str = ""
 
 

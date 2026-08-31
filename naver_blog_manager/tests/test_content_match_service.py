@@ -129,6 +129,40 @@ def test_manual_set_updates_existing_content_match(db_session):
     assert refreshed.title == "새 제목"
 
 
+class _FakeRegisteredBlog:
+    def __init__(self, name):
+        self.name = name
+
+
+def test_apply_content_matches_skips_items_already_matched_to_a_registered_blog():
+    """경쟁업체로 등록해둔 블로그(matcher.match_ownership이 matched_blog를 채워준 경우)는
+    ownership이 "other"로 남더라도, 제목에 업체명이 우연히 들어있어도 체험단 후보로
+    올리면 안 된다 - 이미 신원이 확인된 타업체이기 때문이다."""
+    item = _item("OO PT샵 근처 헬스장 이야기", "https://blog.naver.com/rival_trainer/1")
+    item.matched_blog = _FakeRegisteredBlog("김민수 헬스타이거")
+
+    content_match_service.apply_content_matches(None, [item], watch_names=["OO PT샵"])
+
+    assert item.ownership == "other"
+
+
+def test_apply_content_matches_skips_cafe_posts():
+    """등록 안 된 카페 글이 인기글에 섞여 들어와도, 체험단/직원은 개인 블로그에 글을 쓰지
+    카페에 쓰지 않으므로 자동으로 체험단 후보 판정에서 제외돼야 한다."""
+    item = RankItem(
+        position=1,
+        content_type="cafe",
+        url="https://cafe.naver.com/somecafe/1",
+        blog_id="somecafe",
+        title="OO PT샵 이야기가 나온 카페 글",
+        ownership="other",
+    )
+
+    content_match_service.apply_content_matches(None, [item], watch_names=["OO PT샵"])
+
+    assert item.ownership == "other"
+
+
 def test_manual_set_raises_when_post_key_cannot_be_extracted():
     import pytest
 

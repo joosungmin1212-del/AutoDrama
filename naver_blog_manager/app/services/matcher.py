@@ -21,6 +21,11 @@ _ROLE_TO_OWNERSHIP = {
     BlogRole.COMPANY.value: Ownership.OURS_COMPANY.value,
     BlogRole.STAFF.value: Ownership.OURS_STAFF.value,
     BlogRole.EXPERIENCE.value: Ownership.OURS_EXPERIENCE.value,
+    # 경쟁업체로 등록해둔 블로그는 "other"로 남지만(우리 것이 아니므로), 아래
+    # match_ownership()에서 매칭된 블로그 객체(rb)는 그대로 반환하기 때문에 owner_name으로
+    # "어느 경쟁업체인지"가 대시보드에 표시되고, content_match_service의 체험단 후보 자동
+    # 탐지에서도 "이미 신원이 확인된 블로그"로 취급되어 제외된다.
+    BlogRole.COMPETITOR.value: Ownership.OTHER.value,
 }
 
 

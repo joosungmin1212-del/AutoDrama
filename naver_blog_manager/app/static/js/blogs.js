@@ -1,4 +1,9 @@
-const ROLE_LABEL = { company: "공식 블로그", staff: "직원", experience: "체험단/서포터즈" };
+const ROLE_LABEL = {
+  company: "공식 블로그",
+  staff: "직원",
+  experience: "체험단/서포터즈",
+  competitor: "경쟁업체",
+};
 
 async function loadBlogs() {
   const tbody = document.getElementById("blog-table-body");

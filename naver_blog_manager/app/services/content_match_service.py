@@ -47,12 +47,26 @@ def apply_content_matches(db: Session, items: list[RankItem], watch_names: list[
     아직 등록된 블로그로 판정되지 않은(ownership == "other") 항목 중 제목에 우리 이름이
     보이는 게 있으면, 이전에 확정/거절해둔 기록이 있는지 찾아보고 있으면 그대로 적용하고,
     없으면 새 후보로 등록해서 "확인 필요" 상태로 표시한다.
+
+    다음 두 경우는 애초에 체험단 후보로 보지 않는다 - 사람이 매번 확인할 필요 없이 항상
+    "우리 것 아님"으로 확정돼 있어야 하는 대상이기 때문이다:
+      1. 이미 "경쟁업체"로 등록해둔 블로그(item.matched_blog가 있음) - 주변 동네 트레이너들은
+         같은 키워드에 계속 나오는데, 매번 제목만 보고 "혹시 우리 체험단인가?" 재확인할
+         필요가 없다. 등록해두면 그 순간부터 영구적으로 "확인된 타업체"로 남는다.
+      2. 카페(cafe.naver.com) 글 - 등록 안 된 카페 글이 인기글에 가끔 섞이는데, 체험단/직원은
+         개인 블로그에 글을 쓰지 카페에 쓰지 않으므로 자동으로 "타업체"로 둔다. (우리가 직접
+         운영하는 카페를 공식/직원 블로그로 등록해둔 경우는 이 로직 이전에 이미 매칭되므로
+         영향받지 않는다.)
     """
     if not watch_names:
         return
 
     for item in items:
         if item.ownership != models.Ownership.OTHER.value:
+            continue
+        if item.matched_blog is not None:
+            continue
+        if item.content_type == "cafe":
             continue
 
         matched_name = matcher.find_name_match(item.title, watch_names)

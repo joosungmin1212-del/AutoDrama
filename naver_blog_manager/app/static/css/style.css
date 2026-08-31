@@ -892,6 +892,11 @@ table.simple-table th {
   color: var(--purple);
 }
 
+.role-pill--competitor {
+  background: #f3f4f6;
+  color: var(--text-faint);
+}
+
 .toast {
   position: fixed;
   bottom: 24px;

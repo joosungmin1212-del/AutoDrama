@@ -28,6 +28,7 @@ class BlogRole(str, enum.Enum):
     COMPANY = "company"  # 우리 업체 공식 블로그
     STAFF = "staff"  # 직원 개인 블로그
     EXPERIENCE = "experience"  # 체험단 / 서포터즈
+    COMPETITOR = "competitor"  # 주변 경쟁업체(타 트레이너 등) - 절대 우리 글이 아님을 미리 확정해둠
 
 
 class ContentType(str, enum.Enum):

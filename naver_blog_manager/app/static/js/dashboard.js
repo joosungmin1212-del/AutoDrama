@@ -42,6 +42,13 @@ function accountColorForSlot(s) {
   return accountColorFor(s.owner_blog_id ?? s.owner_name);
 }
 
+// "타업체"인데 owner_name이 있으면(=경쟁업체로 미리 등록해둔 블로그) 이름 모를 그냥
+// "타업체"와는 다르게, 이미 신원이 확인됐다는 걸 라벨에서부터 구별해준다.
+function ownershipLabel(s) {
+  if (s.ownership === "other" && s.owner_name) return "확인된 타업체";
+  return OWNERSHIP_LABEL[s.ownership] || s.ownership;
+}
+
 function accountColorCss(s) {
   const color = accountColorForSlot(s);
   return color ? `background:${color}; border-color:${color}; color:#fff;` : "";
@@ -243,9 +250,7 @@ function renderKeywordCard(k, draggable) {
   const alertClass = k.has_open_alert ? "kw-card--alert" : "";
   const dots = k.slots
     .map((s) => {
-      const label = s.title
-        ? `${OWNERSHIP_LABEL[s.ownership] || ""}${s.owner_name ? " · " + s.owner_name : ""}\n${s.title}`
-        : "미노출";
+      const label = s.title ? `${ownershipLabel(s)}${s.owner_name ? " · " + s.owner_name : ""}\n${s.title}` : "미노출";
       return `<span class="rank-dot rank-dot--${s.ownership}"${rankDotStyle(s)} title="${escapeHtml(label)}">${s.position}</span>`;
     })
     .join("");
@@ -566,8 +571,11 @@ function renderKeywordDetailList(k) {
         </div>`;
       }
 
-      const label = OWNERSHIP_LABEL[s.ownership] || s.ownership;
-      const canOverride = s.ownership !== "ours_staff";
+      const label = ownershipLabel(s);
+      // 경쟁업체로 등록해둔 블로그처럼 이미 신원이 확인된 "타업체"는 매번 "우리 체험단
+      // 맞음?" 버튼을 보여줄 필요가 없다 - 이미 확정된 상태다.
+      const isKnownOther = s.ownership === "other" && !!s.owner_name;
+      const canOverride = s.ownership !== "ours_staff" && !isKnownOther;
       const actions = canOverride
         ? `<div class="content-match-item__actions">
             <button class="btn btn-primary" data-kd-decide="confirmed" data-url="${escapeHtml(
