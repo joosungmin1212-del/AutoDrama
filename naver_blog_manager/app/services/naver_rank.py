@@ -86,9 +86,45 @@ def _is_excluded(tag: Tag) -> bool:
             return True
     return False
 
+# 네이버(및 국내 사이트 일반)가 스크린리더용으로 화면엔 안 보이지만 텍스트로는 존재하는
+# 안내문구를 앵커 안에 흔히 넣어둔다("새 창 열림" 등). get_text()는 이것까지 그대로
+# 긁어오기 때문에, 앵커 텍스트가 전부 이런 문구뿐인 "장식용 링크"(예: 썸네일)를 실제
+# 제목이 있는 링크로 착각하고 그 자리를 차지해버려서, 정작 진짜 제목이 있는 링크가
+# "이미 처리된 글"로 건너뛰어지는 문제가 실제로 있었다. 제목에서 이 문구들을 제거하고,
+# 지워보니 아무것도 안 남으면(=장식용 링크) 그 앵커는 후보에서 제외한다.
+_ACCESSIBILITY_NOISE_PATTERNS = [
+    "새 창 열림",
+    "새창 열림",
+    "새 창에서 열림",
+    "새 탭에서 열림",
+    "새 탭에서 열기",
+    "동영상 재생",
+]
+_SCREEN_READER_ONLY_CLASSES = ["blind", "sr-only", "ir_pm", "screen_out", "a11y"]
+
+
+def _clean_title(text: str) -> str:
+    cleaned = text
+    for noise in _ACCESSIBILITY_NOISE_PATTERNS:
+        cleaned = cleaned.replace(noise, "")
+    return cleaned.strip()
+
+
+def _anchor_text(a: Tag) -> str:
+    """스크린리더 전용 안내문구 요소를 뺀 앵커의 실제 표시 텍스트."""
+    for hidden in a.select(", ".join(f".{cls}" for cls in _SCREEN_READER_ONLY_CLASSES)):
+        hidden.decompose()
+    return _clean_title(a.get_text(strip=True))
+
 
 def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
-    """검색결과 HTML에서 상위 top_n개의 블로그/카페 글을 뽑아 RankItem 리스트로 반환."""
+    """검색결과 HTML에서 상위 top_n개의 블로그/카페 글을 뽑아 RankItem 리스트로 반환.
+
+    같은 글 하나에 앵커가 여러 개 딸려오는 경우(썸네일 링크, 장식용/접근성 링크, 실제
+    제목 링크 등)가 흔해서, 같은 URL로 이어지는 앵커는 전부 한 그룹으로 묶은 뒤 그 중
+    가장 긴(=가장 정보가 많은) 제목을 대표로 쓴다 - 그래야 장식용 링크가 먼저 나온다는
+    이유만으로 진짜 제목이 누락되는 일이 없다.
+    """
     soup = BeautifulSoup(html, "html.parser")
 
     container = None
@@ -100,8 +136,8 @@ def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
     if container is None:
         container = soup
 
-    seen_keys: set[str] = set()
-    items: list[RankItem] = []
+    groups: dict[str, dict] = {}
+    order = 0
 
     for a in container.find_all("a", href=True):
         href = a["href"]
@@ -111,15 +147,24 @@ def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
             continue
 
         key = _normalize_key(href)
-        if key in seen_keys:
+        title = _anchor_text(a)
+
+        if key not in groups:
+            groups[key] = {"href": href, "title": title, "order": order}
+            order += 1
+        else:
+            g = groups[key]
+            if len(title) > len(g["title"]):
+                g["title"] = title
+
+    items: list[RankItem] = []
+    for g in sorted(groups.values(), key=lambda g: g["order"]):
+        if not g["title"]:
+            # 이 글로 이어지는 앵커 중 어디에도 진짜 제목 텍스트가 없었다(예: 썸네일/장식용
+            # 링크만 있던 경우) - 결과에 잘못된 자리를 만들지 않고 건너뛴다.
             continue
 
-        title = a.get_text(strip=True)
-        if not title:
-            # 썸네일 이미지 링크 등 텍스트 없는 앵커는 건너뛰고, 텍스트 있는 링크를 우선한다
-            continue
-
-        seen_keys.add(key)
+        href = g["href"]
         content_type = "cafe" if "cafe.naver.com" in href else "blog"
         blog_id = matcher.extract_identifier(href)
 
@@ -129,7 +174,7 @@ def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
                 content_type=content_type,
                 url=href,
                 blog_id=blog_id,
-                title=title,
+                title=g["title"],
             )
         )
         if len(items) >= top_n:
