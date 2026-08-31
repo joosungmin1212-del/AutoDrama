@@ -7,6 +7,51 @@ const OWNERSHIP_LABEL = {
   empty: "미노출",
 };
 
+// 계정(등록된 블로그)별로 서로 다른 색을 주기 위한 팔레트 - "직원" 등 우리 소유 슬롯이
+// 전부 초록색 하나로만 표시되면, TOP7 안에 우리 계정이 여러 개(예: 성민본계정,
+// 성민부계정) 섞여 있어도 어떤 자리가 어느 계정인지 구별이 안 되는 문제가 실제로
+// 있었다. owner_blog_id(등록된 블로그의 고유 id)를 기준으로 항상 같은 계정은 항상 같은
+// 색이 나오도록 해시로 팔레트에서 고른다 - 대시보드 전체에서 일관되게 유지된다.
+const ACCOUNT_COLOR_PALETTE = [
+  "#16a34a", // green
+  "#2563eb", // blue
+  "#7c3aed", // violet
+  "#db2777", // pink
+  "#ea580c", // orange
+  "#0891b2", // cyan
+  "#65a30d", // lime
+  "#c026d3", // fuchsia
+  "#dc2626", // red
+  "#0d9488", // teal
+];
+
+function accountColorFor(key) {
+  if (key === null || key === undefined || key === "") return null;
+  const str = String(key);
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return ACCOUNT_COLOR_PALETTE[hash % ACCOUNT_COLOR_PALETTE.length];
+}
+
+// "우리 소유"(직원/체험단/공식블로그) 슬롯에만 계정별 색을 입힌다 - 타업체/미노출/체험단
+// 의심(미확정) 자리는 여전히 역할 기반 회색/점선/노란색을 그대로 쓴다.
+function accountColorForSlot(s) {
+  if (!s || !String(s.ownership || "").startsWith("ours_")) return null;
+  return accountColorFor(s.owner_blog_id ?? s.owner_name);
+}
+
+function accountColorCss(s) {
+  const color = accountColorForSlot(s);
+  return color ? `background:${color}; border-color:${color}; color:#fff;` : "";
+}
+
+function rankDotStyle(s) {
+  const css = accountColorCss(s);
+  return css ? ` style="${css}"` : "";
+}
+
 let dashboardData = { stats: null, keywords: [] };
 let currentFilter = "all";
 let searchText = "";
@@ -171,12 +216,15 @@ function renderKeywordList() {
 }
 
 function renderEmployeeChecklist(k) {
-  const badges = k.staff_presence.map(
-    (s) =>
-      `<span class="emp-badge ${s.present ? "emp-badge--yes" : "emp-badge--no"}">${escapeHtml(s.name)} ${
-        s.present ? "✓" : "✗"
-      }</span>`
-  );
+  const badges = k.staff_presence.map((s) => {
+    // 이 계정이 실제로 TOP7에 있으면(present), 오른쪽 순위뱃지와 같은 색을 여기 태그에도
+    // 입혀서 "이 태그 = 저 색깔 동그라미"라는 게 바로 보이게 한다 (구별용 범례 역할).
+    const color = s.present ? accountColorFor(s.id) : null;
+    const style = color ? ` style="background:${color}22; color:${color}; border-color:${color};"` : "";
+    return `<span class="emp-badge ${s.present ? "emp-badge--yes" : "emp-badge--no"}"${style}>${escapeHtml(
+      s.name
+    )} ${s.present ? "✓" : "✗"}</span>`;
+  });
 
   if (k.experience_confirmed_count > 0) {
     badges.push(`<span class="emp-badge emp-badge--experience">체험단 ${k.experience_confirmed_count}</span>`);
@@ -198,7 +246,7 @@ function renderKeywordCard(k, draggable) {
       const label = s.title
         ? `${OWNERSHIP_LABEL[s.ownership] || ""}${s.owner_name ? " · " + s.owner_name : ""}\n${s.title}`
         : "미노출";
-      return `<span class="rank-dot rank-dot--${s.ownership}" title="${escapeHtml(label)}">${s.position}</span>`;
+      return `<span class="rank-dot rank-dot--${s.ownership}"${rankDotStyle(s)} title="${escapeHtml(label)}">${s.position}</span>`;
     })
     .join("");
 
@@ -535,7 +583,9 @@ function renderKeywordDetailList(k) {
       <div class="content-match-item">
         <div class="content-match-item__title">${s.position}위 · ${escapeHtml(s.title)}</div>
         <div class="content-match-item__meta">
-          <span class="rank-dot rank-dot--${s.ownership}" style="display:inline-flex; margin-right:6px;">${
+          <span class="rank-dot rank-dot--${s.ownership}" style="display:inline-flex; margin-right:6px; ${accountColorCss(
+        s
+      )}">${
         s.position
       }</span>${escapeHtml(label)}${s.owner_name ? " · " + escapeHtml(s.owner_name) : ""} ·
           <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">글 보러가기 ↗</a>
