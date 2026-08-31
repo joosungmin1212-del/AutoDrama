@@ -64,6 +64,9 @@ class Setting(Base):
     openai_model: Mapped[str] = mapped_column(String(100), default="gpt-4o-mini")
     rank_check_interval_hours: Mapped[int] = mapped_column(Integer, default=24)
     custom_prompt: Mapped[str] = mapped_column(Text, default="")  # 비어있으면 기본 프롬프트 사용
+    # 체험단 자동 확인(제목 매칭)에 쓸 추가 감시 키워드 - 쉼표/줄바꿈으로 구분해 저장.
+    # 업체명/등록된 직원·공식블로그 이름은 자동으로 포함되므로 중복 입력할 필요 없음.
+    custom_watch_keywords: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )

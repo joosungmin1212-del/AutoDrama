@@ -69,6 +69,36 @@ def test_send_to_naver_without_company_blog_returns_400(client):
     assert "공식 블로그" in r.json()["detail"]
 
 
+def test_send_to_naver_uses_chosen_company_blog_id_when_multiple_registered(client, monkeypatch):
+    """공식 블로그를 2개 이상 등록했을 때, company_blog_id로 지정한 계정으로 정확히
+    보내지는지 확인한다 - 지정 안 하면 등록 순서상 첫 번째로 가는 기존 동작과 헷갈리면
+    안 된다."""
+    r1 = client.post(
+        "/api/blogs",
+        json={"name": "본계정", "blog_url": "https://blog.naver.com/main_account", "role": "company"},
+    )
+    r2 = client.post(
+        "/api/blogs",
+        json={"name": "부계정", "blog_url": "https://blog.naver.com/sub_account", "role": "company"},
+    )
+    sub_account_pk = r2.json()["id"]
+    draft_id = _make_draft(title="제목", content="내용")
+
+    captured = {}
+
+    async def fake_open_write_draft(blog_id, title, content_html):
+        captured["blog_id"] = blog_id
+
+    monkeypatch.setattr(naver_browser, "open_write_draft", fake_open_write_draft)
+
+    r = client.post(
+        "/api/writer/send-to-naver",
+        json={"draft_id": draft_id, "content": "내용", "company_blog_id": sub_account_pk},
+    )
+    assert r.status_code == 200
+    assert captured["blog_id"] == "sub_account"
+
+
 def test_send_to_naver_rejects_empty_content(client):
     client.post(
         "/api/blogs",

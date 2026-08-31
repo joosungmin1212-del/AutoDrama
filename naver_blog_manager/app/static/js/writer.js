@@ -8,6 +8,28 @@ if (params.get("keyword")) {
   document.getElementById("title-input").focus();
 }
 
+// 공식 블로그(계정)가 2개 이상 등록돼 있으면 "보낼 계정"을 고를 수 있게 한다 -
+// 1개뿐이면(대부분의 경우) 기존처럼 신경 쓸 필요 없이 자동으로 그 계정으로 보낸다.
+async function loadSendAccountOptions() {
+  try {
+    const blogs = await apiFetch("/api/blogs");
+    const companyBlogs = blogs.filter((b) => b.role === "company");
+    const field = document.getElementById("send-account-field");
+    const select = document.getElementById("send-account-select");
+    if (companyBlogs.length > 1) {
+      select.innerHTML = companyBlogs
+        .map((b) => `<option value="${b.id}">${escapeHtml(b.name)} (${escapeHtml(b.blog_id)})</option>`)
+        .join("");
+      field.hidden = false;
+    } else {
+      field.hidden = true;
+    }
+  } catch (e) {
+    // 조용히 무시 - 계정 선택 없이도(1개 등록 기준) 보내기는 그대로 동작한다.
+  }
+}
+loadSendAccountOptions();
+
 document.getElementById("generate-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = document.getElementById("generate-btn");
@@ -83,11 +105,21 @@ document.getElementById("send-btn").addEventListener("click", async () => {
   const btn = document.getElementById("send-btn");
   btn.disabled = true;
   btn.textContent = "네이버 창을 여는 중...";
+  const accountField = document.getElementById("send-account-field");
+  const companyBlogId =
+    !accountField.hidden && document.getElementById("send-account-select").value
+      ? Number(document.getElementById("send-account-select").value)
+      : null;
+
   try {
     const res = await apiFetch("/api/writer/send-to-naver", {
       method: "POST",
       // 미리보기에서 고친 내용을 그대로 보낸다 (서버에 저장된 원본 초안이 아니라).
-      body: JSON.stringify({ draft_id: currentDraftId, content: document.getElementById("content-box").value }),
+      body: JSON.stringify({
+        draft_id: currentDraftId,
+        content: document.getElementById("content-box").value,
+        company_blog_id: companyBlogId,
+      }),
     });
     showToast(res.message);
   } catch (e) {

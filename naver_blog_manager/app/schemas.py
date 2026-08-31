@@ -14,6 +14,7 @@ class SettingProfileIn(BaseModel):
     address: str = ""
     phone: str = ""
     strengths: str = ""
+    custom_watch_keywords: str = ""  # 체험단 자동 확인용 추가 감시 키워드 (쉼표/줄바꿈 구분)
 
 
 class SettingAiIn(BaseModel):
@@ -36,6 +37,10 @@ class SettingOut(BaseModel):
     default_prompt: str = ""  # "기본값으로 되돌리기" 버튼용 - 항상 원래 기본 프롬프트
     # 프론트에 API 키 원문을 그대로 내려주면 위험하니, 설정 여부만 알려준다.
     openai_api_key_set: bool = False
+    custom_watch_keywords: str = ""  # 원문 그대로(설정 화면 textarea에 채워넣기용)
+    # 업체명 + 등록된 직원/공식블로그 이름 - 사용자가 직접 입력 안 해도 이미 자동으로
+    # 감시되고 있는 이름들을 "확인"할 수 있게 보여주기 위한 목록 (읽기 전용, 여기서 수정 불가).
+    auto_watch_names: list[str] = []
 
 
 # ---------- Registered Blog ----------
@@ -208,6 +213,9 @@ class WriterSendIn(BaseModel):
     # 미리보기에서 사용자가 고친 내용을 그대로 네이버로 보내기 위함 - 이게 없으면 화면에서
     # 아무리 수정해도 서버에 저장된(=AI가 처음 생성한) 원본 초안이 그대로 전송돼버린다.
     content: str = ""
+    # 공식 블로그(계정)를 여러 개 등록해둔 경우 어디로 보낼지 지정 (RegisteredBlog.id).
+    # 안 주면(0/None) 기존처럼 등록된 공식 블로그 중 하나를 그대로 쓴다(1개만 있을 때 기존 동작 유지).
+    company_blog_id: int | None = None
 
 
 class WriterSendOut(BaseModel):
@@ -220,3 +228,14 @@ class NaverAuthStatus(BaseModel):
     logged_in: bool
     checked_at: datetime | None = None
     message: str = ""
+
+
+class NaverAccountOut(BaseModel):
+    """공식 블로그(계정)별 네이버 로그인 상태 - 계정 전환 UI(블로그 관리 화면)용."""
+
+    blog_pk: int  # RegisteredBlog.id
+    name: str
+    blog_id: str
+    logged_in: bool
+    # 이 계정 전용 세션이 따로 있는지(true) 아니면 기본 세션을 자동으로 쓰고 있는지(false).
+    has_dedicated_session: bool

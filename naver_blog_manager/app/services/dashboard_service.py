@@ -17,6 +17,7 @@ def build_slots(results: list) -> list[dict]:
             "owner_name": None,
             "owner_blog_id": None,
             "owner_role": None,
+            "blog_id": "",
             "title": "",
             "url": "",
             "content_type": "",
@@ -35,6 +36,7 @@ def build_slots(results: list) -> list[dict]:
             owner_blog_id = r.get("owner_blog_id")
             owner_role = r.get("owner_role")
             ownership = r.get("ownership", "other")
+            blog_id = r.get("blog_id", "")
             title = r.get("title", "")
             url = r.get("url", "")
             content_type = r.get("content_type", "")
@@ -47,6 +49,7 @@ def build_slots(results: list) -> list[dict]:
             # 실제 소유 판정은 글(URL) 단위로 따로 결정된다.
             owner_role = getattr(matched, "role", None) if matched else None
             ownership = r.ownership
+            blog_id = r.blog_id
             title = r.title
             url = r.url
             content_type = r.content_type
@@ -57,6 +60,7 @@ def build_slots(results: list) -> list[dict]:
             "owner_name": owner_name,
             "owner_blog_id": owner_blog_id,
             "owner_role": owner_role,
+            "blog_id": blog_id,
             "title": title,
             "url": url,
             "content_type": content_type,

@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -16,17 +17,30 @@ from .. import models
 from . import matcher
 from .naver_rank import RankItem
 
+_CUSTOM_KEYWORD_SPLIT_RE = re.compile(r"[,\n]")
+
+
+def split_custom_watch_keywords(raw: str) -> list[str]:
+    """설정 화면에서 쉼표/줄바꿈으로 구분해 입력한 커스텀 감시 키워드를 리스트로 쪼갠다."""
+    if not raw:
+        return []
+    return [k.strip() for k in _CUSTOM_KEYWORD_SPLIT_RE.split(raw) if k.strip()]
+
 
 def get_watch_names(db: Session) -> list[str]:
-    """제목 매칭에 쓸 "우리 이름" 목록: 업체명 + 등록된 직원/공식블로그 이름.
+    """제목 매칭에 쓸 "우리 이름" 목록: 업체명 + 등록된 직원/공식블로그 이름 + 커스텀 키워드.
 
     직원 이름은 이미 "블로그 관리"에 등록돼 있으므로 따로 입력받지 않고 그대로 재사용한다.
+    커스텀 키워드는 원장님이 체험단에게 꼭 넣어달라고 부탁하는 문구(해시태그, 매장 특징 등)
+    처럼 업체명/직원 이름만으로는 못 잡는 경우를 위해 설정 화면에서 직접 추가할 수 있다.
     """
     names: list[str] = []
 
     setting = db.get(models.Setting, 1)
     if setting and setting.business_name.strip():
         names.append(setting.business_name.strip())
+    if setting:
+        names.extend(split_custom_watch_keywords(setting.custom_watch_keywords))
 
     blogs = (
         db.query(models.RegisteredBlog)

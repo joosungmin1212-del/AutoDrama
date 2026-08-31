@@ -1,3 +1,4 @@
+from app import models
 from app.models import ContentMatch, ContentMatchDecision, Ownership, RankCheck, RankResult
 from app.services import content_match_service
 from app.services.naver_rank import RankItem
@@ -178,6 +179,51 @@ def test_apply_content_matches_skips_cafe_posts():
     content_match_service.apply_content_matches(None, [item], watch_names=["OO PT샵"])
 
     assert item.ownership == "other"
+
+
+def test_split_custom_watch_keywords_handles_commas_newlines_and_blank_entries():
+    raw = "서상동PT체험단, #시스템피티\n\n창원 의창구pt , \n"
+    assert content_match_service.split_custom_watch_keywords(raw) == [
+        "서상동PT체험단",
+        "#시스템피티",
+        "창원 의창구pt",
+    ]
+
+
+def test_split_custom_watch_keywords_empty_string_returns_empty_list():
+    assert content_match_service.split_custom_watch_keywords("") == []
+
+
+def test_get_watch_names_includes_custom_keywords_alongside_business_and_staff_names(db_session):
+    """설정 화면에서 추가한 커스텀 키워드가 업체명/직원 이름과 함께 감시 목록에 들어가서,
+    체험단 글 제목에 업체명이 없어도 이 커스텀 문구만으로 자동 후보로 걸려야 한다."""
+    setting = models.Setting(
+        id=1, business_name="시스템PT", custom_watch_keywords="서상동PT체험단, #우리동네짐"
+    )
+    db_session.add(setting)
+    db_session.add(
+        models.RegisteredBlog(
+            name="원장", blog_url="https://blog.naver.com/wonjang", blog_id="wonjang", role="staff"
+        )
+    )
+    db_session.commit()
+
+    names = content_match_service.get_watch_names(db_session)
+    assert "시스템PT" in names
+    assert "서상동PT체험단" in names
+    assert "#우리동네짐" in names
+    assert "원장" in names
+
+
+def test_apply_content_matches_catches_custom_keyword_without_business_name_in_title(db_session):
+    """실제로 있었던 요구: 체험단에게 부탁한 문구(예: 해시태그)가 제목에 있으면, 업체명이
+    제목에 전혀 없어도 자동으로 체험단 후보로 걸려야 한다."""
+    items = [_item("오늘의 운동 일지 #우리동네짐", "https://blog.naver.com/reviewer1/1")]
+
+    content_match_service.apply_content_matches(db_session, items, watch_names=["#우리동네짐"])
+    db_session.commit()
+
+    assert items[0].ownership == Ownership.PENDING_EXPERIENCE.value
 
 
 def test_manual_set_raises_when_post_key_cannot_be_extracted():

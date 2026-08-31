@@ -21,6 +21,11 @@ DB_PATH = DATA_DIR / "app.db"
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 NAVER_STATE_PATH = DATA_DIR / "naver_state.json"
+# 계정을 여러 개 등록해 쓸 때(계정 전환), 공식 블로그별로 로그인 세션을 따로 저장하는 곳.
+# 아무 계정도 특정 블로그에 지정해 로그인하지 않았으면 위 NAVER_STATE_PATH(기본 세션)를
+# 그대로 쓴다 - PC 1대에 계정 1개만 쓰는 기존 사용자는 아무것도 안 바뀐다.
+NAVER_SESSIONS_DIR = DATA_DIR / "naver_sessions"
+NAVER_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 PORT = int(os.getenv("PORT", "8000"))
 DEFAULT_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")

@@ -36,6 +36,12 @@
 
     <textarea id="content-box" class="content-preview" style="width:100%; border:1px solid var(--border); border-radius:var(--radius-md);" placeholder="AI 초안 생성 버튼을 누르면 여기에 초안이 표시됩니다."></textarea>
 
+    <!-- 공식 블로그(계정)가 2개 이상 등록된 경우에만 보임 - 1개면 자동으로 그걸 씀 -->
+    <div class="field" id="send-account-field" hidden style="margin-top:10px;">
+      <label>보낼 계정</label>
+      <select id="send-account-select"></select>
+    </div>
+
     <div style="display:flex; gap:8px; margin-top:14px;">
       <button class="btn btn-outline" id="copy-btn" style="flex:1; justify-content:center;">📋 복사하기</button>
       <button class="btn btn-primary" id="send-btn" style="flex:1; justify-content:center;" disabled>네이버로 보내기</button>

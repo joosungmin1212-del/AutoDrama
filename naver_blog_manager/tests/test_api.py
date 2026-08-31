@@ -59,6 +59,54 @@ def test_blog_crud_and_invalid_url(client):
     assert r.status_code == 400
 
 
+def test_registering_a_blog_immediately_updates_already_stored_rank_results(client):
+    """실제로 있었던 문제: 대시보드 TOP7 상세보기에서 "경쟁업체로 등록"을 눌러도, 이미
+    저장돼 있던 지난 순위 스냅샷은 다음 순위 갱신 전까지 그대로라 화면에 아무 변화가
+    없는 것처럼 보였다. 새로 등록하는 즉시 같은 blog_id의 기존 결과에도 반영돼야 한다."""
+    from datetime import datetime
+
+    from app import models
+    from app.db import SessionLocal
+
+    kw_id = client.post("/api/keywords", json={"keyword": "서상동PT"}).json()["id"]
+
+    db = SessionLocal()
+    try:
+        check = models.RankCheck(keyword_id=kw_id, checked_at=datetime.utcnow())
+        db.add(check)
+        db.flush()
+        db.add(
+            models.RankResult(
+                rank_check_id=check.id,
+                position=1,
+                content_type="blog",
+                url="https://blog.naver.com/rival_trainer/1",
+                blog_id="rival_trainer",
+                title="아무 상관없는 블로그 글",
+                ownership="other",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.post(
+        "/api/blogs",
+        json={
+            "name": "김민수 헬스타이거",
+            "blog_url": "https://blog.naver.com/rival_trainer",
+            "role": "competitor",
+        },
+    )
+    assert r.status_code == 200
+
+    summary = client.get("/api/dashboard/summary").json()
+    slot = summary["keywords"][0]["slots"][0]
+    assert slot["ownership"] == "other"
+    assert slot["owner_role"] == "competitor"
+    assert slot["owner_name"] == "김민수 헬스타이거"
+
+
 def test_dashboard_summary_shape(client):
     client.post("/api/keywords", json={"keyword": "서상동PT", "category": "메인"})
     r = client.get("/api/dashboard/summary")

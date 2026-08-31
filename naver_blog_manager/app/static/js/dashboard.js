@@ -581,6 +581,10 @@ function renderKeywordDetailList(k) {
       // 한다 (직원 블로그만 예외 - 늘 우리 것).
       const isKnownCompetitor = s.ownership === "other" && s.owner_role === "competitor";
       const canOverride = s.ownership !== "ours_staff" && !isKnownCompetitor;
+      // 아직 아무 역할로도 등록 안 된 블로그(신원 미확인)에서만 "경쟁업체로 등록"을
+      // 보여준다 - 이미 체험단/공식/직원으로 등록돼 있으면 중복 등록할 이유가 없다.
+      const canRegisterCompetitor =
+        !s.owner_role && (s.ownership === "other" || s.ownership === "pending_experience");
       const actions = canOverride
         ? `<div class="content-match-item__actions">
             <button class="btn btn-primary" data-kd-decide="confirmed" data-url="${escapeHtml(
@@ -589,6 +593,15 @@ function renderKeywordDetailList(k) {
             <button class="btn btn-outline" data-kd-decide="rejected" data-url="${escapeHtml(
               s.url
             )}" data-title="${escapeHtml(s.title)}" style="padding:6px 14px;">타업체/아니오</button>
+            ${
+              canRegisterCompetitor
+                ? `<button class="btn btn-outline" data-kd-register-competitor="1" data-blog-id="${escapeHtml(
+                    s.blog_id || ""
+                  )}" data-content-type="${escapeHtml(
+                    s.content_type || "blog"
+                  )}" style="padding:6px 14px;">🚫 경쟁업체로 등록</button>`
+                : ""
+            }
           </div>`
         : "";
 
@@ -613,6 +626,46 @@ function renderKeywordDetailList(k) {
       decideKeywordDetailMatch(btn.dataset.url, btn.dataset.title, btn.dataset.kdDecide)
     );
   });
+  listEl.querySelectorAll("[data-kd-register-competitor]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      registerCompetitorFromDetail(btn.dataset.blogId, btn.dataset.contentType)
+    );
+  });
+}
+
+async function registerCompetitorFromDetail(blogId, contentType) {
+  if (!blogId) {
+    showToast("이 글의 블로그 계정을 인식하지 못해 등록할 수 없습니다.", true);
+    return;
+  }
+  const name = window.prompt(
+    "이 블로그를 경쟁업체로 등록합니다. 앞으로 이 계정의 모든 글은 자동으로 \"확인된 타업체\"로 표시됩니다.\n\n경쟁업체 이름(상호명/트레이너 이름 등)을 입력해주세요:",
+    ""
+  );
+  if (name === null) return; // 취소
+  if (!name.trim()) {
+    showToast("이름을 입력해야 등록할 수 있습니다.", true);
+    return;
+  }
+
+  const blogUrl =
+    contentType === "cafe" ? `https://cafe.naver.com/${blogId}` : `https://blog.naver.com/${blogId}`;
+
+  try {
+    await apiFetch("/api/blogs", {
+      method: "POST",
+      body: JSON.stringify({ name: name.trim(), blog_url: blogUrl, role: "competitor", memo: "" }),
+    });
+    showToast(`"${name.trim()}"을(를) 경쟁업체로 등록했습니다.`);
+    await loadDashboard();
+    const modal = document.getElementById("keyword-detail-modal");
+    if (!modal.hidden && currentDetailKeywordId !== null) {
+      const k = dashboardData.keywords.find((kw) => kw.id === currentDetailKeywordId);
+      if (k) renderKeywordDetailList(k);
+    }
+  } catch (e) {
+    showToast(e.message, true);
+  }
 }
 
 async function decideKeywordDetailMatch(url, title, decision) {
@@ -747,6 +800,12 @@ async function loadProfile() {
     form.address.value = s.address || "";
     form.phone.value = s.phone || "";
     form.strengths.value = s.strengths || "";
+    form.custom_watch_keywords.value = s.custom_watch_keywords || "";
+
+    const autoBox = document.getElementById("auto-watch-names");
+    autoBox.textContent = s.auto_watch_names && s.auto_watch_names.length
+      ? `현재 자동으로 감시 중: ${s.auto_watch_names.join(", ")}`
+      : "현재 자동으로 감시 중인 이름 없음 (업체명/직원을 등록하면 자동으로 추가됩니다)";
   } catch (e) {
     showToast(e.message, true);
   }
@@ -763,6 +822,7 @@ document.getElementById("profile-form").addEventListener("submit", async (e) => 
         address: fd.get("address") || "",
         phone: fd.get("phone") || "",
         strengths: fd.get("strengths") || "",
+        custom_watch_keywords: fd.get("custom_watch_keywords") || "",
       }),
     });
     showToast("업체 프로필을 저장했습니다.");

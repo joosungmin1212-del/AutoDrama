@@ -37,23 +37,45 @@ class NaverAuthError(RuntimeError):
     pass
 
 
-def has_saved_session() -> bool:
-    return config.NAVER_STATE_PATH.exists()
+def _session_path(blog_id: str | None):
+    """blog_id를 지정하면 그 계정 전용 세션 파일을, 안 지정하면(None) 기본 세션 파일을 쓴다.
+
+    PC 1대에 네이버 계정 1개만 쓰는 기존 방식(공식 블로그도 1개)에서는 항상 기본 세션
+    파일 하나만 쓰이므로 아무것도 안 바뀐다. 계정을 여러 개 등록한 경우에만, 블로그 관리
+    화면에서 그 블로그에 지정해 로그인한 계정별 파일이 따로 쓰인다.
+    """
+    if not blog_id:
+        return config.NAVER_STATE_PATH
+    return config.NAVER_SESSIONS_DIR / f"{blog_id.lower()}.json"
 
 
-def clear_saved_session() -> None:
-    if config.NAVER_STATE_PATH.exists():
-        config.NAVER_STATE_PATH.unlink()
+def has_saved_session(blog_id: str | None = None) -> bool:
+    return _session_path(blog_id).exists()
 
 
-def _save_state(state: dict) -> None:
+def clear_saved_session(blog_id: str | None = None) -> None:
+    path = _session_path(blog_id)
+    if path.exists():
+        path.unlink()
+
+
+def _save_state(state: dict, blog_id: str | None = None) -> None:
     encrypted = secure_storage.protect(json.dumps(state, ensure_ascii=False))
-    config.NAVER_STATE_PATH.write_text(encrypted, encoding="utf-8")
+    _session_path(blog_id).write_text(encrypted, encoding="utf-8")
 
 
-def _load_state() -> dict:
-    raw = config.NAVER_STATE_PATH.read_text(encoding="utf-8")
+def _load_state(blog_id: str | None = None) -> dict:
+    raw = _session_path(blog_id).read_text(encoding="utf-8")
     return json.loads(secure_storage.unprotect(raw))
+
+
+def _resolve_session_blog_id(blog_id: str | None) -> str | None:
+    """실제 글쓰기/상태확인에 쓸 세션을 고른다: 이 블로그 전용으로 로그인해둔 세션이
+    있으면 그걸 쓰고, 없으면 기본 세션(가장 처음 로그인한 계정)으로 자동 대체한다 -
+    계정을 하나만 쓰는 사용자는 매번 지정 안 해도 항상 그 계정으로 동작한다."""
+    if blog_id and has_saved_session(blog_id):
+        return blog_id
+    return None
 
 
 async def _watch_and_cleanup(playwright, browser) -> None:
@@ -73,10 +95,13 @@ async def _watch_and_cleanup(playwright, browser) -> None:
             logger.debug("playwright 정리 중 오류(무시 가능)", exc_info=True)
 
 
-async def login_interactive(timeout_ms: int = 180_000) -> bool:
+async def login_interactive(timeout_ms: int = 180_000, blog_id: str | None = None) -> bool:
     """실제 브라우저 창을 열어 사용자가 직접 로그인하도록 하고, 세션을 암호화해 저장한다.
 
     PT샵 PC(화면이 있는 환경)에서 실행되어야 한다. 클라우드/헤드리스 서버에서는 동작하지 않는다.
+    blog_id를 지정하면 그 공식 블로그 전용 계정으로 저장되어(계정 전환용), 나중에
+    open_write_draft(blog_id=...)가 이 세션을 우선 사용한다. 지정하지 않으면(최초
+    설정 화면의 기본 로그인) 계정을 하나만 쓰는 사용자가 계속 쓰게 될 기본 세션으로 저장된다.
     """
     from playwright.async_api import async_playwright
 
@@ -99,21 +124,25 @@ async def login_interactive(timeout_ms: int = 180_000) -> bool:
                 ) from exc
 
             state = await context.storage_state()
-            _save_state(state)
+            _save_state(state, blog_id)
             return True
         finally:
             await browser.close()
 
 
-async def check_login_status() -> bool:
-    """저장된 세션이 실제로 아직 유효한지 headless로 확인."""
-    if not has_saved_session():
+async def check_login_status(blog_id: str | None = None) -> bool:
+    """저장된 세션이 실제로 아직 유효한지 headless로 확인.
+
+    blog_id 전용 세션이 없으면 기본 세션으로 자동 대체해서 확인한다(_resolve_session_blog_id).
+    """
+    session_blog_id = _resolve_session_blog_id(blog_id)
+    if not has_saved_session(session_blog_id):
         return False
 
     from playwright.async_api import async_playwright
 
     try:
-        state = _load_state()
+        state = _load_state(session_blog_id)
     except Exception:  # noqa: BLE001
         # 세션 파일이 깨졌거나(예: 다른 PC에서 복사해온 DPAPI 암호문) 복호화할 수 없으면
         # 로그인 안 된 것으로 취급한다.
@@ -140,12 +169,16 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
     사용자 PC(화면이 있는 환경)에서 실행되어야 하며, 자동화가 끝나면 브라우저 창은
     사용자가 검토/발행할 수 있도록 열린 채로 남겨둔다(자동으로 닫지 않음). 다만 그 창이
     나중에 닫히면 백그라운드에서 Playwright 드라이버도 함께 정리된다.
+
+    이 blog_id 전용으로 로그인해둔 계정이 있으면 그 계정으로, 없으면 기본 계정(가장
+    처음 로그인한 계정)으로 자동 전송한다 - 계정을 하나만 쓰는 사용자는 신경 쓸 필요 없다.
     """
-    if not has_saved_session():
+    session_blog_id = _resolve_session_blog_id(blog_id)
+    if not has_saved_session(session_blog_id):
         raise NaverAuthError("네이버 로그인이 먼저 필요합니다. 설정 화면에서 로그인해주세요.")
 
     try:
-        state = _load_state()
+        state = _load_state(session_blog_id)
     except Exception as exc:  # noqa: BLE001
         raise NaverAuthError(
             "저장된 네이버 로그인 세션을 읽을 수 없습니다. 설정 화면에서 다시 로그인해주세요."

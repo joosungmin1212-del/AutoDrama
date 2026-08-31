@@ -18,7 +18,21 @@ def _get_or_create(db: Session) -> models.Setting:
     return setting
 
 
-def _to_out(setting: models.Setting) -> schemas.SettingOut:
+def _to_out(db: Session, setting: models.Setting) -> schemas.SettingOut:
+    auto_names: list[str] = []
+    if setting.business_name.strip():
+        auto_names.append(setting.business_name.strip())
+    staff_blogs = (
+        db.query(models.RegisteredBlog)
+        .filter(
+            models.RegisteredBlog.role.in_(
+                [models.BlogRole.STAFF.value, models.BlogRole.COMPANY.value]
+            )
+        )
+        .all()
+    )
+    auto_names.extend(b.name.strip() for b in staff_blogs if b.name.strip())
+
     return schemas.SettingOut(
         business_name=setting.business_name,
         address=setting.address,
@@ -31,12 +45,14 @@ def _to_out(setting: models.Setting) -> schemas.SettingOut:
         custom_prompt=setting.custom_prompt or openai_writer.SYSTEM_PROMPT,
         default_prompt=openai_writer.SYSTEM_PROMPT,
         openai_api_key_set=bool(setting.openai_api_key),
+        custom_watch_keywords=setting.custom_watch_keywords,
+        auto_watch_names=auto_names,
     )
 
 
 @router.get("", response_model=schemas.SettingOut)
 def get_settings(db: Session = Depends(get_db)):
-    return _to_out(_get_or_create(db))
+    return _to_out(db, _get_or_create(db))
 
 
 @router.put("/profile", response_model=schemas.SettingOut)
@@ -47,9 +63,10 @@ def update_profile(payload: schemas.SettingProfileIn, db: Session = Depends(get_
     setting.address = payload.address
     setting.phone = payload.phone
     setting.strengths = payload.strengths
+    setting.custom_watch_keywords = payload.custom_watch_keywords
     db.commit()
     db.refresh(setting)
-    return _to_out(setting)
+    return _to_out(db, setting)
 
 
 @router.put("/ai", response_model=schemas.SettingOut)
@@ -70,4 +87,4 @@ def update_ai(payload: schemas.SettingAiIn, db: Session = Depends(get_db)):
         # (예전에는 이 값이 저장만 되고 실제로는 안 쓰여서 항상 24시간 고정이었다).
         scheduler_service.reschedule(setting.rank_check_interval_hours)
 
-    return _to_out(setting)
+    return _to_out(db, setting)

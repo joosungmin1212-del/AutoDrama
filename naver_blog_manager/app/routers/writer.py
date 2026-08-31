@@ -88,11 +88,17 @@ async def send_to_naver(payload: schemas.WriterSendIn, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="보낼 내용이 비어 있습니다.")
     draft.content = final_content
 
-    company_blog = (
-        db.query(models.RegisteredBlog)
-        .filter(models.RegisteredBlog.role == models.BlogRole.COMPANY.value)
-        .first()
+    company_query = db.query(models.RegisteredBlog).filter(
+        models.RegisteredBlog.role == models.BlogRole.COMPANY.value
     )
+    if payload.company_blog_id:
+        # 여러 공식 블로그(계정) 중 사용자가 화면에서 고른 계정으로 보낸다.
+        company_blog = company_query.filter(
+            models.RegisteredBlog.id == payload.company_blog_id
+        ).first()
+    else:
+        # 지정 안 하면(공식 블로그가 1개뿐인 기존 사용자) 그냥 첫 번째로 등록된 걸 쓴다.
+        company_blog = company_query.first()
     if not company_blog or not company_blog.blog_id:
         raise HTTPException(
             status_code=400,
