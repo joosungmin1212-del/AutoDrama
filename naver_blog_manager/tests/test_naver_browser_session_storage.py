@@ -55,6 +55,22 @@ def test_per_blog_session_is_isolated_from_default_and_other_accounts(tmp_path, 
     assert naver_browser.has_saved_session("account_b") is True  # 다른 계정은 안 지워짐
 
 
+def test_saved_session_file_permissions_are_restricted_to_owner(tmp_path, monkeypatch):
+    """access_token/.secret.key처럼, 로그인 세션 파일도 소유자만 읽을 수 있어야 한다 -
+    가장 민감한 파일인데 정작 권한 제한이 빠져있던 문제."""
+    import stat
+    import sys
+
+    if sys.platform == "win32":
+        return  # chmod가 의미 없는 플랫폼 - Windows에서는 DPAPI가 내용을 계정에 묶어줌
+
+    _isolate_sessions(tmp_path, monkeypatch)
+
+    naver_browser._save_state({"cookies": []}, blog_id="account_a")
+    mode = stat.S_IMODE(naver_browser._session_path("account_a").stat().st_mode)
+    assert mode == 0o600
+
+
 def test_resolve_session_blog_id_falls_back_to_default_when_no_dedicated_session(tmp_path, monkeypatch):
     """실제로 요구된 동작: 특정 계정 전용으로 따로 로그인해둔 적이 없으면(계정 1개만
     쓰는 기존 사용자), 처음 로그인했을 때의 계정(기본 세션)을 그대로 쓴다."""

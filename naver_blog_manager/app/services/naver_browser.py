@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 
 from .. import config
 from . import secure_storage
@@ -61,7 +62,16 @@ def clear_saved_session(blog_id: str | None = None) -> None:
 
 def _save_state(state: dict, blog_id: str | None = None) -> None:
     encrypted = secure_storage.protect(json.dumps(state, ensure_ascii=False))
-    _session_path(blog_id).write_text(encrypted, encoding="utf-8")
+    path = _session_path(blog_id)
+    path.write_text(encrypted, encoding="utf-8")
+    # .access_token/.secret.key와 마찬가지로 소유자만 읽을 수 있게 잠근다 - 로그인 세션
+    # 쿠키는 이 중 가장 민감한 파일인데 정작 권한 제한이 빠져있었다. Windows에서는
+    # DPAPI가 내용 자체를 현재 계정에 묶어주지만, 파일 권한도 같이 잠가두는 게 안전하다
+    # (chmod가 의미 없는 Windows에서는 조용히 무시됨).
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def _load_state(blog_id: str | None = None) -> dict:
