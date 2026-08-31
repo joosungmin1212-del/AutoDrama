@@ -26,6 +26,14 @@ MAIN_CONTAINER_SELECTORS = ["#main_pack", "div.api_subject_bx", "body"]
 # 광고/파워링크 등 결과에서 제외할 영역
 EXCLUDE_SELECTORS = ["[class*='power_link']", "[class*='ad_']", "[id*='power_link']"]
 
+# VIEW 검색결과 페이지에서 "인기글" 카드 하나하나를 감싸는 컨테이너. 실제 사용자가 보내준
+# 페이지 원본에서 확인된 구조로, 이게 있으면 이 안에서만 링크를 찾는다 - 그래야 페이지의
+# 다른 영역(연관검색어, "다른 사람들이 많이 찾는", AI 요약, 지식iN 등)에 우연히 섞여있는
+# blog.naver.com/cafe.naver.com 링크가 인기글 결과로 잘못 집계되는 일이 없다. 마크업이
+# 바뀌어서 이 컨테이너가 하나도 안 잡히면(구버전 마크업 등) 예전처럼 본문 전체에서
+# 넓게 훑는 방식으로 자동 폴백한다.
+ITEM_CONTAINER_SELECTORS = ["[data-template-id='ugcItem']"]
+
 # 네이버가 자동화 접근을 의심해 보안문자/차단 페이지를 돌려줄 때 흔히 등장하는 문구들.
 # 이런 페이지에서는 "결과 0개"가 곧 "우리 글이 다 내려갔다"는 뜻이 아니므로 반드시 구분해야 한다.
 _BLOCK_INDICATORS = [
@@ -132,29 +140,17 @@ def _is_post_url(href: str) -> bool:
     return matcher.extract_post_key(href).startswith(("blog:", "cafe:"))
 
 
-def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
-    """검색결과 HTML에서 상위 top_n개의 블로그/카페 글을 뽑아 RankItem 리스트로 반환.
+def _collect_anchor_groups(scope: Tag) -> list[dict]:
+    """scope(어떤 Tag든) 안에서 blog/cafe "글" 앵커들을 등장 순서대로, 같은 글끼리 묶어 반환.
 
     같은 글 하나에 앵커가 여러 개 딸려오는 경우(썸네일 링크, 장식용/접근성 링크, 실제
     제목 링크 등)가 흔해서, 같은 URL로 이어지는 앵커는 전부 한 그룹으로 묶은 뒤 그 중
-    가장 긴(=가장 정보가 많은) 제목을 대표로 쓴다 - 그래야 장식용 링크가 먼저 나온다는
-    이유만으로 진짜 제목이 누락되는 일이 없다.
+    먼저 나온(=화면에서 제목이 본문 미리보기보다 앞에 오는) 실제 텍스트를 대표로 쓴다.
     """
-    soup = BeautifulSoup(html, "html.parser")
-
-    container = None
-    for sel in MAIN_CONTAINER_SELECTORS:
-        found = soup.select_one(sel)
-        if found is not None:
-            container = found
-            break
-    if container is None:
-        container = soup
-
     groups: dict[str, dict] = {}
     order = 0
 
-    for a in container.find_all("a", href=True):
+    for a in scope.find_all("a", href=True):
         href = a["href"]
         if "blog.naver.com" not in href and "cafe.naver.com" not in href:
             continue
@@ -171,33 +167,73 @@ def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
             order += 1
         else:
             g = groups[key]
-            # 먼저 나온(=화면에서 제목이 본문 미리보기보다 앞에 오는) 실제 텍스트를 그대로
-            # 쓴다. "더 긴 텍스트를 우선"하면 제목보다 훨씬 긴 본문 미리보기 링크가 같은
-            # href를 공유할 때 그 미리보기 문단 전체가 "제목"으로 둔갑해버리는 문제가 있었다
+            # "더 긴 텍스트를 우선"하면 제목보다 훨씬 긴 본문 미리보기 링크가 같은 href를
+            # 공유할 때 그 미리보기 문단 전체가 "제목"으로 둔갑해버리는 문제가 있었다
             # (실제로 발견됨) - 장식용 링크(정리 후 텍스트가 비어있는)만 건너뛰면 된다.
             if not g["title"] and title:
                 g["title"] = title
 
+    return sorted(groups.values(), key=lambda g: g["order"])
+
+
+def _group_to_item(g: dict, position: int) -> RankItem:
+    href = g["href"]
+    content_type = "cafe" if "cafe.naver.com" in href else "blog"
+    return RankItem(
+        position=position,
+        content_type=content_type,
+        url=href,
+        blog_id=matcher.extract_identifier(href),
+        title=g["title"],
+    )
+
+
+def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
+    """검색결과 HTML에서 상위 top_n개의 "인기글" 블로그/카페 글을 뽑아 RankItem 리스트로 반환.
+
+    실제 네이버 VIEW 검색결과 페이지에서는 인기글 카드 하나하나가
+    `[data-template-id="ugcItem"]` 컨테이너로 감싸여 있다. 이 컨테이너가 있으면 그 안
+    (카드 하나당 결과 하나)에서만 링크를 찾는다 - 그래야 페이지의 다른 영역(연관검색어,
+    "다른 사람들이 많이 찾는", AI 요약 등)에 우연히 있는 blog/cafe 링크가 인기글 결과로
+    잘못 섞여 들어오지 않는다. 이 컨테이너가 하나도 안 잡히면(마크업이 바뀐 구버전 등)
+    예전처럼 본문(main_pack) 전체를 넓게 훑는 방식으로 자동 폴백한다.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    container = None
+    for sel in MAIN_CONTAINER_SELECTORS:
+        found = soup.select_one(sel)
+        if found is not None:
+            container = found
+            break
+    if container is None:
+        container = soup
+
+    item_blocks: list[Tag] = []
+    for sel in ITEM_CONTAINER_SELECTORS:
+        item_blocks.extend(container.select(sel))
+
     items: list[RankItem] = []
-    for g in sorted(groups.values(), key=lambda g: g["order"]):
+
+    if item_blocks:
+        # 인기글 카드 하나당 결과는 최대 하나 - 카드 안에 썸네일/제목/미리보기 앵커가
+        # 여러 개 있어도 대표 글 하나로만 묶는다.
+        for block in item_blocks:
+            groups = _collect_anchor_groups(block)
+            representative = next((g for g in groups if g["title"]), None)
+            if representative is None:
+                # 카드 안 어디에도 진짜 제목 텍스트가 없었다(썸네일/장식용 링크만 있던 경우)
+                # - 결과에 잘못된 자리를 만들지 않고 건너뛴다.
+                continue
+            items.append(_group_to_item(representative, len(items) + 1))
+            if len(items) >= top_n:
+                break
+        return items
+
+    for g in _collect_anchor_groups(container):
         if not g["title"]:
-            # 이 글로 이어지는 앵커 중 어디에도 진짜 제목 텍스트가 없었다(예: 썸네일/장식용
-            # 링크만 있던 경우) - 결과에 잘못된 자리를 만들지 않고 건너뛴다.
             continue
-
-        href = g["href"]
-        content_type = "cafe" if "cafe.naver.com" in href else "blog"
-        blog_id = matcher.extract_identifier(href)
-
-        items.append(
-            RankItem(
-                position=len(items) + 1,
-                content_type=content_type,
-                url=href,
-                blog_id=blog_id,
-                title=g["title"],
-            )
-        )
+        items.append(_group_to_item(g, len(items) + 1))
         if len(items) >= top_n:
             break
 

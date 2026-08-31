@@ -191,6 +191,60 @@ def test_parse_view_html_home_link_alone_produces_no_result():
     assert parse_view_html(html) == []
 
 
+def test_parse_view_html_scopes_to_ugc_item_cards_when_present():
+    """실제 네이버 VIEW 페이지에서는 인기글 카드 하나하나가
+    [data-template-id="ugcItem"]로 감싸여 있다 - 이 컨테이너가 있으면 그 밖(연관검색어,
+    "다른 사람들이 많이 찾는" 등)에 우연히 있는 blog/cafe 링크는 인기글 결과로 잡히면
+    안 되고, 카드 안에서는 대표 글 하나만 결과가 돼야 한다."""
+    html = """
+    <div id="main_pack">
+      <div class="related_srch">
+        <a href="https://blog.naver.com/unrelated_widget/1">연관검색어 옆 위젯에 우연히 있는 블로그 링크</a>
+      </div>
+      <div data-template-id="ugcItem" data-template-type="searchBasic">
+        <div data-template-id="articleSource">
+          <a href="https://blog.naver.com/bhy0565">
+            <span>작성자 닉네임</span>
+          </a>
+        </div>
+        <div>
+          <a href="https://blog.naver.com/bhy0565/224380926951" class="title_link">
+            <span>진짜 인기글 제목 1</span>
+          </a>
+          <a href="https://blog.naver.com/bhy0565/224380926951" class="dsc_link">
+            <span>훨씬 긴 본문 미리보기 문단...</span>
+          </a>
+        </div>
+      </div>
+      <div data-template-id="ugcItem" data-template-type="searchBasic">
+        <a href="https://cafe.naver.com/somecafe/2">
+          <span>진짜 인기글 제목 2</span>
+        </a>
+      </div>
+    </div>
+    """
+    items = parse_view_html(html)
+    assert len(items) == 2
+    assert items[0].title == "진짜 인기글 제목 1"
+    assert items[0].blog_id == "bhy0565"
+    assert items[1].title == "진짜 인기글 제목 2"
+    assert items[1].blog_id == "somecafe"
+    assert all(i.blog_id != "unrelated_widget" for i in items)
+
+
+def test_parse_view_html_falls_back_to_wide_scan_without_ugc_item_markers():
+    """ugcItem 컨테이너가 없는(구버전/다른 마크업) 페이지에서는 예전처럼 본문 전체를
+    넓게 훑는 방식으로 계속 동작해야 한다 - 기존 FIXTURE_HTML 테스트들이 이를 검증한다."""
+    html = """
+    <div id="main_pack">
+      <a href="https://blog.naver.com/plainlist/1">ugcItem 없이도 잡혀야 하는 글</a>
+    </div>
+    """
+    items = parse_view_html(html)
+    assert len(items) == 1
+    assert items[0].title == "ugcItem 없이도 잡혀야 하는 글"
+
+
 class _FakeBlog:
     def __init__(self, blog_id, role):
         self.blog_id = blog_id
