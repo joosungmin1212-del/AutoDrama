@@ -246,9 +246,10 @@ def test_parse_view_html_falls_back_to_wide_scan_without_ugc_item_markers():
 
 
 class _FakeBlog:
-    def __init__(self, blog_id, role):
+    def __init__(self, blog_id, role, name="테스트"):
         self.blog_id = blog_id
         self.role = role
+        self.name = name
 
 
 @pytest.mark.asyncio
@@ -268,3 +269,25 @@ async def test_check_keyword_rank_matches_registered_blog_despite_noise_text(mon
     matched = next(i for i in items if i.blog_id == "systempt_cw")
     assert matched.ownership == "ours_staff"
     assert matched.title == "창원 의창구서상동 pt샵 견적문의"
+
+
+@pytest.mark.asyncio
+async def test_check_keyword_rank_does_not_blanket_confirm_registered_experience_blog(monkeypatch):
+    """실제로 지적된 문제: 체험단으로 등록해둔 같은 블로그 계정이 이 키워드에서는 완전히
+    무관한(우리 업체와 상관없는) 글을 쓸 수도 있다 - 체험단은 캠페인마다 다른 업체 글을
+    쓰기 때문에 흔한 일이다. 등록해뒀다고 해서 그 계정의 아무 글이나 자동으로
+    "ours_experience"로 확정되면 안 되고, ownership은 "other"로 남아야 한다(신원만
+    owner 정보로 표시됨 - 실제 판정은 글 단위로 content_match_service가 한다)."""
+
+    async def fake_fetch(keyword, page=None, timeout_ms=15000):
+        return NOISY_FIXTURE_HTML
+
+    monkeypatch.setattr(naver_rank, "fetch_view_html", fake_fetch)
+
+    registered = [_FakeBlog("systempt_cw", "experience", name="체험단A")]
+    items = await naver_rank.check_keyword_rank("서상동PT", registered_blogs=registered)
+
+    matched = next(i for i in items if i.blog_id == "systempt_cw")
+    assert matched.ownership == "other"
+    assert matched.matched_blog is not None
+    assert matched.matched_blog.name == "체험단A"

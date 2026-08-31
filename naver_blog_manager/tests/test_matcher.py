@@ -41,9 +41,9 @@ def test_match_ownership_staff():
 
 
 def test_match_ownership_case_insensitive():
-    blogs = [FakeBlog("MyBlog", BlogRole.EXPERIENCE.value, "체험단A")]
+    blogs = [FakeBlog("MyBlog", BlogRole.COMPANY.value, "공식블로그")]
     ownership, matched = matcher.match_ownership("myblog", blogs)
-    assert ownership == Ownership.OURS_EXPERIENCE.value
+    assert ownership == Ownership.OURS_COMPANY.value
     assert matched is not None
 
 
@@ -60,11 +60,30 @@ def test_match_ownership_empty_identifier():
     assert matched is None
 
 
-def test_match_ownership_competitor_is_other_but_still_returns_matched_blog():
-    """경쟁업체로 미리 등록해둔 블로그는 "우리 것"은 아니지만(ownership=other), 어떤
-    경쟁업체인지는 대시보드에 계속 표시돼야 하므로 matched 객체는 그대로 반환돼야 한다."""
+def test_match_ownership_does_not_blanket_match_competitor_or_experience():
+    """실제로 있었던 문제: 체험단/경쟁업체로 등록해둔 같은 블로그 계정이 키워드마다
+    완전히 다른 업체 글을 쓰는 경우가 흔한데, match_ownership이 계정 단위로 ownership을
+    자동 확정해버리면 그 계정의 아무 글이나 항상 "우리 것"/"항상 타업체"로 잘못 집계된다.
+    그래서 이 두 역할은 match_ownership에서 아예 안 잡혀야 하고(글 단위 판정은
+    content_match_service가 따로 함), 대신 find_known_identity로 신원만 표시한다."""
+    blogs = [
+        FakeBlog("rival_trainer", BlogRole.COMPETITOR.value, "김민수 헬스타이거"),
+        FakeBlog("freelance_reviewer", BlogRole.EXPERIENCE.value, "체험단A"),
+    ]
+
+    for blog_id in ("rival_trainer", "freelance_reviewer"):
+        ownership, matched = matcher.match_ownership(blog_id, blogs)
+        assert ownership == Ownership.OTHER.value
+        assert matched is None
+
+
+def test_find_known_identity_finds_competitor_and_experience_regardless_of_role():
+    """match_ownership과 달리, find_known_identity는 신원 표시 용도로 역할 상관없이
+    등록된 블로그를 찾아준다 - ownership 판정에는 관여하지 않는다."""
     blogs = [FakeBlog("rival_trainer", BlogRole.COMPETITOR.value, "김민수 헬스타이거")]
-    ownership, matched = matcher.match_ownership("rival_trainer", blogs)
-    assert ownership == Ownership.OTHER.value
+    matched = matcher.find_known_identity("rival_trainer", blogs)
     assert matched is not None
     assert matched.name == "김민수 헬스타이거"
+
+    assert matcher.find_known_identity("unknown_blog", blogs) is None
+    assert matcher.find_known_identity("", blogs) is None

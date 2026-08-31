@@ -134,16 +134,20 @@ class _FakeRegisteredBlog:
         self.name = name
 
 
-def test_apply_content_matches_skips_items_already_matched_to_a_registered_blog():
-    """경쟁업체로 등록해둔 블로그(matcher.match_ownership이 matched_blog를 채워준 경우)는
-    ownership이 "other"로 남더라도, 제목에 업체명이 우연히 들어있어도 체험단 후보로
-    올리면 안 된다 - 이미 신원이 확인된 타업체이기 때문이다."""
+def test_apply_content_matches_still_checks_title_even_for_a_known_registered_identity(db_session):
+    """실제로 있었던 문제: 체험단/경쟁업체로 등록해둔 같은 블로그 계정이 이 키워드에는
+    우리 업체 이야기를, 다른 키워드에는 완전히 다른 업체 이야기를 쓰는 경우가 흔하다.
+    그래서 item.matched_blog가 있어도(=신원이 등록된 계정) "이 계정 = 항상 이 판정"으로
+    미리 건너뛰면 안 되고, 이 글의 제목은 그대로 검사해서 후보로 올려야 한다 - 신원 표시와
+    이 글의 실제 판정은 별개다."""
     item = _item("OO PT샵 근처 헬스장 이야기", "https://blog.naver.com/rival_trainer/1")
     item.matched_blog = _FakeRegisteredBlog("김민수 헬스타이거")
 
-    content_match_service.apply_content_matches(None, [item], watch_names=["OO PT샵"])
+    content_match_service.apply_content_matches(db_session, [item], watch_names=["OO PT샵"])
+    db_session.commit()
 
-    assert item.ownership == "other"
+    assert item.ownership == Ownership.PENDING_EXPERIENCE.value
+    assert db_session.query(ContentMatch).count() == 1
 
 
 def test_apply_content_matches_skips_cafe_posts():

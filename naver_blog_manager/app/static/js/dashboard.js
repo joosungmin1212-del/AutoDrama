@@ -42,10 +42,13 @@ function accountColorForSlot(s) {
   return accountColorFor(s.owner_blog_id ?? s.owner_name);
 }
 
-// "타업체"인데 owner_name이 있으면(=경쟁업체로 미리 등록해둔 블로그) 이름 모를 그냥
-// "타업체"와는 다르게, 이미 신원이 확인됐다는 걸 라벨에서부터 구별해준다.
+// ownership이 아직 "other"라도 owner_role로 등록된 계정이면(체험단/경쟁업체) 그냥 모르는
+// "타업체"와는 다르게 라벨을 구별해준다. 단, 등록해뒀다고 해서 이 글까지 자동으로 확정된
+// 건 아니다 - 같은 체험단 계정이 다른 키워드에선 완전히 다른 업체 글을 쓸 수 있어서,
+// 신원(누구 계정인지)과 이 글의 판정은 따로 본다.
 function ownershipLabel(s) {
-  if (s.ownership === "other" && s.owner_name) return "확인된 타업체";
+  if (s.ownership === "other" && s.owner_role === "competitor") return "확인된 타업체";
+  if (s.ownership === "other" && s.owner_role === "experience") return "등록된 체험단(이 글 확인 필요)";
   return OWNERSHIP_LABEL[s.ownership] || s.ownership;
 }
 
@@ -572,10 +575,10 @@ function renderKeywordDetailList(k) {
       }
 
       const label = ownershipLabel(s);
-      // 경쟁업체로 등록해둔 블로그처럼 이미 신원이 확인된 "타업체"는 매번 "우리 체험단
-      // 맞음?" 버튼을 보여줄 필요가 없다 - 이미 확정된 상태다.
-      const isKnownOther = s.ownership === "other" && !!s.owner_name;
-      const canOverride = s.ownership !== "ours_staff" && !isKnownOther;
+      // 경쟁업체/체험단으로 등록해둔 계정이어도 이 글 자체의 판정은 항상 사람이 뒤집을
+      // 수 있어야 한다 - 같은 계정이 다른 키워드에선 완전히 다른 업체 글을 쓰기도 해서,
+      // "이 계정 = 항상 이 판정"으로 못 박으면 안 된다 (직원 블로그만 예외 - 늘 우리 것).
+      const canOverride = s.ownership !== "ours_staff";
       const actions = canOverride
         ? `<div class="content-match-item__actions">
             <button class="btn btn-primary" data-kd-decide="confirmed" data-url="${escapeHtml(

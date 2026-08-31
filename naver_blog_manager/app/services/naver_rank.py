@@ -300,6 +300,11 @@ async def check_keyword_rank(
         ownership, matched = matcher.match_ownership(item.blog_id, registered_blogs)
         item.ownership = ownership
         item.matched_blog = matched
+        if item.matched_blog is None:
+            # 공식/직원 블로그로는 안 잡혔다 - 그래도 체험단/경쟁업체로 등록해둔 계정이면
+            # (ownership 판정에는 영향 안 주고) 신원만 붙여준다. 이 글 자체가 우리 것인지는
+            # content_match_service가 글(URL) 단위로 따로 판정한다.
+            item.matched_blog = matcher.find_known_identity(item.blog_id, registered_blogs)
     return items
 
 

@@ -16,6 +16,7 @@ def build_slots(results: list) -> list[dict]:
             "ownership": "empty",
             "owner_name": None,
             "owner_blog_id": None,
+            "owner_role": None,
             "title": "",
             "url": "",
             "content_type": "",
@@ -32,6 +33,7 @@ def build_slots(results: list) -> list[dict]:
         if is_dict:
             owner_name = r.get("owner_name")
             owner_blog_id = r.get("owner_blog_id")
+            owner_role = r.get("owner_role")
             ownership = r.get("ownership", "other")
             title = r.get("title", "")
             url = r.get("url", "")
@@ -40,6 +42,10 @@ def build_slots(results: list) -> list[dict]:
             matched = getattr(r, "matched_blog", None)
             owner_name = getattr(matched, "name", None) if matched else None
             owner_blog_id = getattr(matched, "id", None) if matched else None
+            # matched_blog가 있다고 해서 ownership이 항상 "우리 것"인 건 아니다 - 체험단/
+            # 경쟁업체로 등록해둔 계정은 신원 표시용으로만 붙어있고(owner_role 참고),
+            # 실제 소유 판정은 글(URL) 단위로 따로 결정된다.
+            owner_role = getattr(matched, "role", None) if matched else None
             ownership = r.ownership
             title = r.title
             url = r.url
@@ -50,6 +56,7 @@ def build_slots(results: list) -> list[dict]:
             "ownership": ownership,
             "owner_name": owner_name,
             "owner_blog_id": owner_blog_id,
+            "owner_role": owner_role,
             "title": title,
             "url": url,
             "content_type": content_type,
