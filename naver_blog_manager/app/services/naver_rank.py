@@ -154,7 +154,11 @@ def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
             order += 1
         else:
             g = groups[key]
-            if len(title) > len(g["title"]):
+            # 먼저 나온(=화면에서 제목이 본문 미리보기보다 앞에 오는) 실제 텍스트를 그대로
+            # 쓴다. "더 긴 텍스트를 우선"하면 제목보다 훨씬 긴 본문 미리보기 링크가 같은
+            # href를 공유할 때 그 미리보기 문단 전체가 "제목"으로 둔갑해버리는 문제가 있었다
+            # (실제로 발견됨) - 장식용 링크(정리 후 텍스트가 비어있는)만 건너뛰면 된다.
+            if not g["title"] and title:
                 g["title"] = title
 
     items: list[RankItem] = []

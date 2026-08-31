@@ -128,6 +128,25 @@ def test_parse_view_html_merges_same_path_anchors_despite_different_query_string
     assert items[0].title == "진짜 제목입니다"
 
 
+def test_parse_view_html_keeps_title_over_longer_snippet_link():
+    """실제로 있었던 회귀 버그: 제목 링크와 본문 미리보기(snippet) 링크가 같은 글(URL)을
+    공유할 때, "더 긴 텍스트를 우선"하는 방식으로 고치자 훨씬 긴 본문 미리보기 문단이
+    "제목"으로 나와버렸다(제목이 본문 요약처럼 보임). 화면에 제목이 미리보기보다 먼저
+    나오는 순서를 그대로 믿고, 먼저 나온 진짜 텍스트를 title로 써야 한다."""
+    html = """
+    <div id="main_pack">
+      <a href="https://blog.naver.com/systempt_cw/223999001" class="title_link">진짜 짧은 제목</a>
+      <a href="https://blog.naver.com/systempt_cw/223999001" class="dsc_link">
+        여기는 훨씬 긴 본문 미리보기 문단입니다 실제 제목보다 글자 수가 훨씬 많고 검색결과
+        스니펫으로 보여지는 부분이라 제목으로 쓰이면 안 됩니다.
+      </a>
+    </div>
+    """
+    items = parse_view_html(html)
+    assert len(items) == 1
+    assert items[0].title == "진짜 짧은 제목"
+
+
 class _FakeBlog:
     def __init__(self, blog_id, role):
         self.blog_id = blog_id
