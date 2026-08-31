@@ -147,6 +147,50 @@ def test_parse_view_html_keeps_title_over_longer_snippet_link():
     assert items[0].title == "진짜 짧은 제목"
 
 
+def test_parse_view_html_skips_author_profile_home_link():
+    """실제로 사용자가 보내준 네이버 검색결과 원본 HTML에서 확인된 버그: 작성자
+    프로필/닉네임 앵커가 글이 아니라 블로그 홈(글 번호 없음)으로 연결되는데, 이걸 별개의
+    검색결과로 잘못 집계해서 "빅스짐 중동점 점장 변효성" 같은 사람 이름이 제목 자리를
+    차지하며 TOP7 한 자리를 빼앗아갔다. 작성자 홈 링크는 결과에서 아예 제외돼야 하고,
+    실제 글 앵커의 진짜 제목만 하나의 결과로 남아야 한다."""
+    html = """
+    <div id="main_pack">
+      <div data-template-id="articleSource">
+        <a href="https://blog.naver.com/bhy0565">
+          <span>빅스짐 중동점 점장 변효성</span>
+          <span class="blind">새 창 열림</span>
+        </a>
+      </div>
+      <div>
+        <a href="https://blog.naver.com/bhy0565/224380926951" class="title_link">
+          <span>서상동PT 헬스와 피티를 꾸준히 하는데 왜 몸은 그대로일까</span>
+          <span class="blind">새 창 열림</span>
+        </a>
+        <a href="https://blog.naver.com/bhy0565/224380926951" class="dsc_link">
+          <span>프로그램입니다 운동을 시작해야겠다고 다짐한 회원님들을 위한 이야기...</span>
+          <span class="blind">새 창 열림</span>
+        </a>
+      </div>
+    </div>
+    """
+    items = parse_view_html(html)
+    assert len(items) == 1
+    assert items[0].blog_id == "bhy0565"
+    assert items[0].title == "서상동PT 헬스와 피티를 꾸준히 하는데 왜 몸은 그대로일까"
+    assert "변효성" not in items[0].title
+
+
+def test_parse_view_html_home_link_alone_produces_no_result():
+    """글 번호 없는 작성자 홈 링크만 있고 실제 글 앵커가 아예 없으면(예: 파싱 못한 카드),
+    가짜 결과를 만들지 말고 그냥 아무 것도 반환하지 않아야 한다."""
+    html = """
+    <div id="main_pack">
+      <a href="https://blog.naver.com/bhy0565">작성자 닉네임</a>
+    </div>
+    """
+    assert parse_view_html(html) == []
+
+
 class _FakeBlog:
     def __init__(self, blog_id, role):
         self.blog_id = blog_id

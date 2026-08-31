@@ -117,6 +117,21 @@ def _anchor_text(a: Tag) -> str:
     return _clean_title(a.get_text(strip=True))
 
 
+def _is_post_url(href: str) -> bool:
+    """블로그/카페의 "글 하나"를 가리키는 URL인지 판단한다.
+
+    실제로 있었던 버그: 검색결과 카드에는 글 제목 앵커 말고도 "작성자 프로필/닉네임"
+    앵커가 따로 있는데, 이 앵커는 특정 글이 아니라 블로그/카페 홈(예:
+    https://blog.naver.com/bhy0565, 글 번호 없음)으로 연결된다. 도메인만 보고 걸러내면
+    이 홈 링크가 실제 글의 URL과 다른 경로라서 별개의 검색결과로 그룹화되어버리고,
+    작성자 닉네임("빅스짐 중동점 점장 변효성" 등)이 제목 자리를 차지하며 TOP7 한 자리를
+    빼앗아간다 - 사용자가 보내준 실제 네이버 검색결과 HTML에서 확인된 문제다. 글 번호까지
+    포함된(=matcher.extract_post_key가 "blog:"/"cafe:"로 시작하는 진짜 키를 뽑아낸) URL만
+    글로 인정하고, 홈 링크는 애초에 그룹화 대상에서 제외한다.
+    """
+    return matcher.extract_post_key(href).startswith(("blog:", "cafe:"))
+
+
 def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
     """검색결과 HTML에서 상위 top_n개의 블로그/카페 글을 뽑아 RankItem 리스트로 반환.
 
@@ -142,6 +157,8 @@ def parse_view_html(html: str, top_n: int = config.TOP_N) -> list[RankItem]:
     for a in container.find_all("a", href=True):
         href = a["href"]
         if "blog.naver.com" not in href and "cafe.naver.com" not in href:
+            continue
+        if not _is_post_url(href):
             continue
         if _is_excluded(a):
             continue
