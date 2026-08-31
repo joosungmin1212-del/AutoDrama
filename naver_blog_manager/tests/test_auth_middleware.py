@@ -31,3 +31,16 @@ def test_api_requires_token_when_auth_enabled(monkeypatch):
     finally:
         monkeypatch.setenv("NBM_DISABLE_AUTH", "1")
         importlib.reload(main_module)
+
+
+def test_static_assets_are_never_heuristically_cached(monkeypatch):
+    """정적 JS/CSS가 브라우저에 오래 캐시되면, 앱을 업데이트해도 사용자가 옛 파일을
+    계속 쓰게 되어 화면이 깨진 것처럼 보이는 문제가 실제로 있었다 (설정/키워드 화면
+    오류). no-cache를 강제해서 매번 서버에 최신인지 재확인하도록 한다."""
+    import app.main as main_module
+
+    importlib.reload(main_module)
+    with TestClient(main_module.app) as client:
+        r = client.get("/static/js/dashboard.js")
+        assert r.status_code == 200
+        assert r.headers.get("cache-control") == "no-cache"

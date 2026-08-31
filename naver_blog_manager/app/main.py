@@ -96,6 +96,20 @@ async def local_token_guard(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def no_cache_static_assets(request: Request, call_next):
+    """정적 파일(JS/CSS)은 기본적으로 Last-Modified만 붙어서 브라우저가 한동안 서버에
+    묻지도 않고 예전 캐시를 그대로 쓴다(휴리스틱 캐싱). 이 앱은 자주 업데이트되는데,
+    파일을 새로 받아도 브라우저가 옛날 JS/CSS를 계속 쓰면 화면이 깨진 것처럼 보인다
+    (실제로 새 화면 요소를 옛 JS가 못 찾아 오류가 나는 사례가 있었음). no-cache를 붙여
+    매번 서버에 최신인지 확인하도록 강제한다 (내용이 그대로면 여전히 304로 빠르게 응답됨).
+    인증 미들웨어보다 먼저 등록해서, 인증 켜짐/꺼짐 여부와 상관없이 항상 적용되게 한다."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/login")
 def login_page(request: Request):
     return templates.TemplateResponse(request, "login.html", {"active_nav": ""})

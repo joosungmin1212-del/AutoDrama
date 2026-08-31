@@ -40,6 +40,9 @@ function renderStats(stats) {
 // ---------- 지금 확인해야 할 것 요약 배너 ----------
 function renderSummaryBanner(stats) {
   const el = document.getElementById("summary-banner");
+  // 업데이트 직후 브라우저에 옛 HTML이 캐시돼 있는 등, 이 요소가 아직 없는 화면일 수도
+  // 있다 - 여기서 조용히 넘어가야 다른 렌더링(키워드 목록 등)까지 멈추지 않는다.
+  if (!el) return;
   const chips = [];
 
   if (stats.open_alert_count > 0) {
@@ -417,8 +420,10 @@ function stopRefreshPolling() {
     clearInterval(refreshPollTimer);
     refreshPollTimer = null;
   }
-  document.getElementById("refresh-progress").hidden = true;
+  const progress = document.getElementById("refresh-progress");
+  if (progress) progress.hidden = true;
   const btn = document.getElementById("refresh-all-btn");
+  if (!btn) return;
   btn.disabled = false;
   btn.innerHTML = "↻ 전체 순위 갱신";
 }
@@ -432,12 +437,17 @@ async function pollRefreshStatus() {
     return;
   }
 
-  document.getElementById("refresh-progress").hidden = false;
-  const fillPct = status.total ? Math.round((status.done / status.total) * 100) : 0;
-  document.getElementById("refresh-progress-fill").style.width = `${fillPct}%`;
-  document.getElementById("refresh-progress-text").textContent = status.running
-    ? `${status.done}/${status.total} 처리 중${status.current_keyword ? " · " + status.current_keyword : ""}`
-    : `${status.done}/${status.total} 완료`;
+  const progress = document.getElementById("refresh-progress");
+  const fill = document.getElementById("refresh-progress-fill");
+  const text = document.getElementById("refresh-progress-text");
+  if (progress && fill && text) {
+    progress.hidden = false;
+    const fillPct = status.total ? Math.round((status.done / status.total) * 100) : 0;
+    fill.style.width = `${fillPct}%`;
+    text.textContent = status.running
+      ? `${status.done}/${status.total} 처리 중${status.current_keyword ? " · " + status.current_keyword : ""}`
+      : `${status.done}/${status.total} 완료`;
+  }
 
   if (!status.running) {
     stopRefreshPolling();
@@ -530,6 +540,7 @@ document.getElementById("profile-form").addEventListener("submit", async (e) => 
 // ---------- 초기 설정 체크리스트 ----------
 async function loadOnboarding() {
   const card = document.getElementById("onboarding-card");
+  if (!card) return;
   try {
     const [settings, blogs, dash] = await Promise.all([
       apiFetch("/api/settings"),
