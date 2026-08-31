@@ -33,6 +33,51 @@ function renderStats(stats) {
   const btn = document.getElementById("content-match-btn");
   btn.textContent = `🕵️ 체험단 확인 필요 (${stats.pending_content_match_count})`;
   btn.classList.toggle("filter-tab--alert", stats.pending_content_match_count > 0);
+
+  renderSummaryBanner(stats);
+}
+
+// ---------- 지금 확인해야 할 것 요약 배너 ----------
+function renderSummaryBanner(stats) {
+  const el = document.getElementById("summary-banner");
+  const chips = [];
+
+  if (stats.open_alert_count > 0) {
+    chips.push(
+      `<button class="summary-banner__chip summary-banner__chip--danger" id="summary-goto-alert">⚠ 이탈 알림 ${stats.open_alert_count}건</button>`
+    );
+  }
+  if (stats.pending_content_match_count > 0) {
+    chips.push(
+      `<button class="summary-banner__chip summary-banner__chip--warn" id="summary-open-content-match">🕵️ 체험단 확인 필요 ${stats.pending_content_match_count}건</button>`
+    );
+  }
+
+  if (chips.length === 0) {
+    el.className = "summary-banner summary-banner--ok";
+    el.innerHTML = "✅ 지금 확인이 필요한 알림이 없습니다.";
+    return;
+  }
+
+  el.className = "summary-banner summary-banner--alert";
+  el.innerHTML = `<span class="summary-banner__label">지금 확인해야 할 것</span>${chips.join("")}`;
+
+  const alertChip = document.getElementById("summary-goto-alert");
+  if (alertChip) {
+    alertChip.addEventListener("click", () => {
+      currentFilter = "alert";
+      renderFilterTabs(dashboardData.keywords, dashboardData.stats);
+      renderKeywordList();
+      document.getElementById("kw-list").scrollIntoView({ behavior: "smooth" });
+    });
+  }
+  const contentMatchChip = document.getElementById("summary-open-content-match");
+  if (contentMatchChip) {
+    contentMatchChip.addEventListener("click", () => {
+      document.getElementById("content-match-modal").hidden = false;
+      loadContentMatchModal();
+    });
+  }
 }
 
 function pct(n, total) {
@@ -276,6 +321,7 @@ function setupAddKeywordModal() {
       modal.hidden = true;
       showToast("키워드를 추가했습니다.");
       await loadDashboard();
+      await loadOnboarding();
     } catch (e) {
       showToast(e.message, true);
     }
@@ -363,21 +409,89 @@ document.getElementById("search-input").addEventListener("input", (e) => {
   renderKeywordList();
 });
 
+// ---------- 전체 순위 갱신 진행률 ----------
+let refreshPollTimer = null;
+
+function stopRefreshPolling() {
+  if (refreshPollTimer) {
+    clearInterval(refreshPollTimer);
+    refreshPollTimer = null;
+  }
+  document.getElementById("refresh-progress").hidden = true;
+  const btn = document.getElementById("refresh-all-btn");
+  btn.disabled = false;
+  btn.innerHTML = "↻ 전체 순위 갱신";
+}
+
+async function pollRefreshStatus() {
+  let status;
+  try {
+    status = await apiFetch("/api/keywords/refresh-all/status");
+  } catch (e) {
+    stopRefreshPolling();
+    return;
+  }
+
+  document.getElementById("refresh-progress").hidden = false;
+  const fillPct = status.total ? Math.round((status.done / status.total) * 100) : 0;
+  document.getElementById("refresh-progress-fill").style.width = `${fillPct}%`;
+  document.getElementById("refresh-progress-text").textContent = status.running
+    ? `${status.done}/${status.total} 처리 중${status.current_keyword ? " · " + status.current_keyword : ""}`
+    : `${status.done}/${status.total} 완료`;
+
+  if (!status.running) {
+    stopRefreshPolling();
+    const failCount = status.errors.length;
+    const successCount = status.total - failCount;
+    showToast(
+      failCount > 0
+        ? `${status.total}개 중 ${successCount}개 갱신 완료, ${failCount}개는 실패했습니다: ${status.errors
+            .map((e) => e.keyword)
+            .join(", ")}`
+        : `${status.total}개 키워드 순위를 갱신했습니다.`,
+      failCount > 0
+    );
+    await loadDashboard();
+  }
+}
+
 document.getElementById("refresh-all-btn").addEventListener("click", async (e) => {
   const btn = e.currentTarget;
   btn.disabled = true;
-  btn.textContent = "갱신 중...";
+  btn.textContent = "시작하는 중...";
   try {
     const res = await apiFetch("/api/keywords/refresh-all", { method: "POST" });
-    showToast(`${res.checked}개 키워드 순위를 갱신했습니다.`);
+    if (!res.total) {
+      showToast("갱신할 키워드가 없습니다.");
+      btn.disabled = false;
+      btn.innerHTML = "↻ 전체 순위 갱신";
+      return;
+    }
+    btn.textContent = "갱신 중...";
+    if (refreshPollTimer) clearInterval(refreshPollTimer);
+    refreshPollTimer = setInterval(pollRefreshStatus, 1200);
+    await pollRefreshStatus();
   } catch (e2) {
     showToast(e2.message, true);
-  } finally {
     btn.disabled = false;
     btn.innerHTML = "↻ 전체 순위 갱신";
-    await loadDashboard();
   }
 });
+
+// 페이지를 새로고침했는데 마침 백그라운드에서 갱신이 진행 중이었다면 이어서 폴링을 재개한다.
+async function resumeRefreshPollingIfRunning() {
+  try {
+    const status = await apiFetch("/api/keywords/refresh-all/status");
+    if (status.running) {
+      document.getElementById("refresh-all-btn").disabled = true;
+      document.getElementById("refresh-all-btn").textContent = "갱신 중...";
+      refreshPollTimer = setInterval(pollRefreshStatus, 1200);
+      await pollRefreshStatus();
+    }
+  } catch (e) {
+    // 무시 - 다음 수동 갱신 때 다시 시도됨
+  }
+}
 
 // ---------- 업체 프로필 (접이식) ----------
 async function loadProfile() {
@@ -407,12 +521,75 @@ document.getElementById("profile-form").addEventListener("submit", async (e) => 
       }),
     });
     showToast("업체 프로필을 저장했습니다.");
+    await loadOnboarding();
   } catch (err) {
     showToast(err.message, true);
   }
 });
 
+// ---------- 초기 설정 체크리스트 ----------
+async function loadOnboarding() {
+  const card = document.getElementById("onboarding-card");
+  try {
+    const [settings, blogs, dash] = await Promise.all([
+      apiFetch("/api/settings"),
+      apiFetch("/api/blogs"),
+      apiFetch("/api/dashboard/summary"),
+    ]);
+
+    const steps = [
+      {
+        label: "업체 프로필 입력 (업체명)",
+        done: !!settings.business_name,
+        action: () => {
+          document.getElementById("profile-details").open = true;
+          document.getElementById("profile-details").scrollIntoView({ behavior: "smooth" });
+        },
+      },
+      { label: "OpenAI API 키 설정", done: settings.openai_api_key_set, href: "/settings" },
+      { label: "블로그 등록 (내 블로그 최소 1개)", done: blogs.length > 0, href: "/blogs" },
+      {
+        label: "키워드 추가",
+        done: dash.keywords.length > 0,
+        action: () => document.getElementById("add-keyword-btn").click(),
+      },
+    ];
+
+    if (steps.every((s) => s.done)) {
+      card.hidden = true;
+      return;
+    }
+
+    card.hidden = false;
+    const list = document.getElementById("onboarding-list");
+    list.innerHTML = steps
+      .map(
+        (s, idx) => `
+      <li class="onboarding-item ${s.done ? "onboarding-item--done" : ""}">
+        <span>${s.done ? "✅" : "⬜"}</span>
+        <span>${escapeHtml(s.label)}</span>
+        ${
+          !s.done
+            ? s.href
+              ? `<a class="onboarding-item__link" href="${s.href}">이동 →</a>`
+              : `<button class="onboarding-item__link" data-onboarding-step="${idx}">바로가기 →</button>`
+            : ""
+        }
+      </li>`
+      )
+      .join("");
+
+    list.querySelectorAll("[data-onboarding-step]").forEach((btn) => {
+      btn.addEventListener("click", () => steps[Number(btn.dataset.onboardingStep)].action());
+    });
+  } catch (e) {
+    card.hidden = true;
+  }
+}
+
 setupAddKeywordModal();
 setupContentMatchModal();
 loadDashboard();
 loadProfile();
+loadOnboarding();
+resumeRefreshPollingIfRunning();

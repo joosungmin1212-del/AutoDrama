@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..db import get_db
-from ..services import rank_service
+from ..db import SessionLocal, get_db
+from ..services import rank_progress, rank_service
 
 router = APIRouter(prefix="/api/keywords", tags=["keywords"])
 
@@ -89,10 +89,35 @@ async def refresh_keyword(keyword_id: int, db: Session = Depends(get_db)):
     return _to_rank_check_out(rank_check)
 
 
-@router.post("/refresh-all")
-async def refresh_all(db: Session = Depends(get_db)):
+async def _run_refresh_all_in_background() -> None:
+    """백그라운드에서 실행되므로, 요청과 수명이 다른 별도 DB 세션을 새로 연다."""
+    db = SessionLocal()
     try:
-        checks = await rank_service.run_all_active_checks(db)
+        await rank_service.run_all_active_checks(
+            db, on_progress=rank_progress.set_current, on_error=rank_progress.add_error
+        )
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"전체 순위 갱신 중 오류가 발생했습니다: {exc}")
-    return {"success": True, "checked": len(checks)}
+        rank_progress.add_error("(전체)", str(exc))
+    finally:
+        rank_progress.finish()
+        db.close()
+
+
+@router.post("/refresh-all")
+def refresh_all(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    if rank_progress.is_running():
+        raise HTTPException(status_code=409, detail="이미 순위 갱신이 진행 중입니다. 잠시 후 다시 시도해주세요.")
+
+    total = db.query(models.Keyword).filter(models.Keyword.active.is_(True)).count()
+    if total == 0:
+        return {"success": True, "total": 0}
+
+    rank_progress.reset(total)
+    background_tasks.add_task(_run_refresh_all_in_background)
+    return {"success": True, "total": total}
+
+
+@router.get("/refresh-all/status")
+def refresh_all_status():
+    """진행 중인 "전체 순위 갱신"의 진행 상태를 폴링용으로 반환한다."""
+    return rank_progress.snapshot()

@@ -90,16 +90,22 @@ def run_rank_check_sync(db: Session, keyword: models.Keyword) -> models.RankChec
     return asyncio.run(run_rank_check_async(db, keyword))
 
 
-async def run_all_active_checks(db: Session) -> list[models.RankCheck]:
+async def run_all_active_checks(db: Session, on_progress=None, on_error=None) -> list[models.RankCheck]:
     """등록된 키워드를 전부 순서대로 조회한다.
 
     브라우저는 배치 전체에서 딱 1개만 켜서 재사용한다 (키워드마다 새로 켰다 끄던 예전 방식은
     브라우저 실행 자체의 오버헤드가 커서, 키워드가 많을수록 불필요하게 느려졌다). 키워드
     사이의 딜레이는 그대로 유지한다 - 이건 속도 문제가 아니라 네이버가 짧은 시간에 몰아치는
     요청을 자동화로 의심하지 않게 하기 위한 것이라, 없애면 오히려 전체가 차단될 위험이 커진다.
+
+    한 키워드가 실패해도(예: 일시적 차단 의심) 배치 전체를 멈추지 않고 나머지는 계속
+    진행한다 - 실패는 on_error로 기록해서 나중에 요약해 보여준다.
+    on_progress(done, total, current_keyword)는 매 키워드가 끝날 때마다 호출된다
+    (진행률 표시용).
     """
     keywords = db.query(models.Keyword).filter(models.Keyword.active.is_(True)).all()
     checks: list[models.RankCheck] = []
+    total = len(keywords)
     if not keywords:
         return checks
 
@@ -114,7 +120,15 @@ async def run_all_active_checks(db: Session) -> list[models.RankCheck]:
                     await asyncio.sleep(
                         random.uniform(config.MIN_REQUEST_DELAY_SEC, config.MAX_REQUEST_DELAY_SEC)
                     )
-                checks.append(await run_rank_check_async(db, kw, page=page))
+                try:
+                    checks.append(await run_rank_check_async(db, kw, page=page))
+                except Exception as exc:  # noqa: BLE001
+                    db.rollback()
+                    if on_error:
+                        on_error(kw.keyword, str(exc))
+                finally:
+                    if on_progress:
+                        on_progress(idx + 1, total, kw.keyword)
         finally:
             await browser.close()
     return checks
