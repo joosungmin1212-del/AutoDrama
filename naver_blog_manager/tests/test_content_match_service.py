@@ -96,3 +96,41 @@ def test_decide_updates_existing_rank_results_immediately(db_session):
 
     db_session.refresh(result)
     assert result.ownership == Ownership.OURS_EXPERIENCE.value
+
+
+def test_manual_set_confirms_a_post_that_auto_detection_never_flagged(db_session):
+    """체험단이 제목에 업체명/직원 이름을 안 써서 자동 감지 후보로도 안 걸린 글을,
+    사람이 대시보드에서 직접 "우리 체험단 맞음"으로 지정하는 경로."""
+    url = "https://blog.naver.com/reviewer2/9"
+
+    match = content_match_service.manual_set(
+        db_session, url, "그냥 동네 헬스장 다녀온 후기", ContentMatchDecision.CONFIRMED.value
+    )
+    db_session.commit()
+
+    assert match.decision == ContentMatchDecision.CONFIRMED.value
+    assert match.matched_text == "수동 확인"
+    assert match.post_key == "blog:reviewer2:9"
+
+
+def test_manual_set_updates_existing_content_match(db_session):
+    """이미 자동 감지로 만들어진 pending 후보를, 수동 확정 경로로도 그대로 결정할 수 있다."""
+    url = "https://blog.naver.com/reviewer1/1"
+    existing = ContentMatch(post_key="blog:reviewer1:1", url=url, title="옛 제목", matched_text="OO PT샵")
+    db_session.add(existing)
+    db_session.commit()
+
+    content_match_service.manual_set(db_session, url, "새 제목", ContentMatchDecision.REJECTED.value)
+    db_session.commit()
+
+    assert db_session.query(ContentMatch).count() == 1
+    refreshed = db_session.query(ContentMatch).filter_by(post_key="blog:reviewer1:1").one()
+    assert refreshed.decision == ContentMatchDecision.REJECTED.value
+    assert refreshed.title == "새 제목"
+
+
+def test_manual_set_raises_when_post_key_cannot_be_extracted():
+    import pytest
+
+    with pytest.raises(ValueError):
+        content_match_service.manual_set(None, "", "제목", "confirmed")

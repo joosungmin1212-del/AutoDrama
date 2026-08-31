@@ -87,6 +87,36 @@ def apply_content_matches(db: Session, items: list[RankItem], watch_names: list[
             item.ownership = models.Ownership.PENDING_EXPERIENCE.value
 
 
+def manual_set(db: Session, url: str, title: str, decision: str) -> models.ContentMatch:
+    """대시보드에서 TOP7 글 하나를 사람이 직접 "우리 체험단 맞음/아님"으로 지정할 때 쓴다.
+
+    제목에 업체명/직원 이름이 없어서 자동 감지(watch_names 매칭)에 걸리지 않은 글도
+    이걸로 확정할 수 있다 - 체험단 블로거가 우리 이름을 안 쓰고 글을 쓰는 경우가 실제로
+    있어서, 자동 감지만으로는 놓치는 글이 생긴다. post_key로 판정을 저장하는 방식은
+    자동 감지와 동일해서, 이후 같은 글이 다시 나와도 판정이 계속 적용된다.
+    """
+    post_key = matcher.extract_post_key(url)
+    if not post_key:
+        raise ValueError("이 글의 식별자를 알아내지 못해 저장할 수 없습니다.")
+
+    content_match = db.query(models.ContentMatch).filter_by(post_key=post_key).first()
+    if content_match is None:
+        content_match = models.ContentMatch(
+            post_key=post_key,
+            url=url,
+            title=title,
+            matched_text="수동 확인",
+            decision=models.ContentMatchDecision.PENDING.value,
+        )
+        db.add(content_match)
+        db.flush()
+    else:
+        content_match.title = title
+        content_match.url = url
+
+    return decide(db, content_match, decision)
+
+
 def decide(db: Session, content_match: models.ContentMatch, decision: str) -> models.ContentMatch:
     """확정/거절 처리 + 이미 저장된 최근 결과에도 즉시 반영 (다음 갱신을 기다리지 않도록)."""
     content_match.decision = decision

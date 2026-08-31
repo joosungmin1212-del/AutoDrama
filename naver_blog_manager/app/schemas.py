@@ -171,6 +171,14 @@ class ContentMatchDecisionIn(BaseModel):
     decision: str = Field(pattern="^(confirmed|rejected)$")
 
 
+class ContentMatchManualIn(BaseModel):
+    """대시보드에서 TOP7 글 하나를 직접 확정/거절할 때 (제목에 이름이 없어 자동 감지가 놓친 경우)."""
+
+    url: str
+    title: str = ""
+    decision: str = Field(pattern="^(confirmed|rejected)$")
+
+
 # ---------- Writer ----------
 class WriterGenerateIn(BaseModel):
     title: str

@@ -25,3 +25,12 @@ def decide_content_match(
     if not match:
         raise HTTPException(status_code=404, detail="항목을 찾을 수 없습니다.")
     return content_match_service.decide(db, match, payload.decision)
+
+
+@router.post("/manual", response_model=schemas.ContentMatchOut)
+def decide_content_match_manual(payload: schemas.ContentMatchManualIn, db: Session = Depends(get_db)):
+    """대시보드의 키워드 TOP7 상세보기에서, 자동 감지 후보로 안 걸린 글도 직접 확정/거절한다."""
+    try:
+        return content_match_service.manual_set(db, payload.url, payload.title, payload.decision)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

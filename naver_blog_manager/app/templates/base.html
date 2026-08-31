@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}PT샵 네이버 블로그 매니저{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="/static/css/style.css?v={{ static_version }}" />
   {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -22,7 +22,7 @@
     {% block content %}{% endblock %}
   </div>
   <div id="toast" class="toast" hidden></div>
-  <script src="/static/js/common.js"></script>
+  <script src="/static/js/common.js?v={{ static_version }}"></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

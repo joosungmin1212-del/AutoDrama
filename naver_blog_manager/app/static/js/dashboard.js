@@ -158,6 +158,9 @@ function renderKeywordList() {
       window.location.href = `/writer?keyword=${encodeURIComponent(btn.dataset.keyword)}`;
     });
   });
+  listEl.querySelectorAll("[data-action='view-detail']").forEach((el) => {
+    el.addEventListener("click", () => openKeywordDetail(Number(el.dataset.id)));
+  });
 
   if (draggable) {
     setupDragAndDrop(listEl);
@@ -202,7 +205,7 @@ function renderKeywordCard(k, draggable) {
     <div class="kw-ratio-box">${k.our_count}/${k.total_slots}</div>
     <div class="kw-card__main">
       <div class="kw-card__title-row">
-        <span class="kw-title">${escapeHtml(k.keyword)}</span>
+        <span class="kw-title kw-title--clickable" data-action="view-detail" data-id="${k.id}" title="클릭해서 TOP7 글 목록 보기">${escapeHtml(k.keyword)} 🔍</span>
         ${k.category ? `<span class="badge badge-category">${escapeHtml(k.category)}</span>` : ""}
         ${k.has_open_alert ? `<span class="badge badge-alert">⚠ 이탈 발생</span>` : ""}
       </div>
@@ -212,7 +215,7 @@ function renderKeywordCard(k, draggable) {
     </div>
     <div class="kw-card__right">
       <div>
-        <div class="rank-dots">${dots}</div>
+        <div class="rank-dots" data-action="view-detail" data-id="${k.id}" title="클릭해서 TOP7 글 목록 보기">${dots}</div>
         <div class="kw-ratio-text">TOP7 점유: ${k.our_count}/${k.total_slots} (${pctVal}%)</div>
       </div>
       <button class="icon-btn" data-action="refresh" data-id="${k.id}" title="순위 갱신">↻</button>
@@ -404,6 +407,93 @@ function setupContentMatchModal() {
       modal.hidden = false;
       loadContentMatchModal();
     }
+  });
+}
+
+// ---------- 키워드 TOP7 상세보기 (자동 감지가 놓친 체험단 글을 직접 확정할 수 있음) ----------
+// 자동 감지는 "제목에 업체명/직원 이름이 있는지"만 보기 때문에, 체험단이 우리 이름을
+// 안 쓰고 쓴 글은 "타업체"로 남아있게 된다. 여기서는 TOP7 글 하나하나를 보여주고,
+// 자동으로 안 걸린 글도 사람이 직접 "우리 체험단 맞음/아님"으로 정할 수 있게 한다.
+let currentDetailKeywordId = null;
+
+function openKeywordDetail(keywordId) {
+  const k = dashboardData.keywords.find((kw) => kw.id === keywordId);
+  if (!k) return;
+  currentDetailKeywordId = keywordId;
+  document.getElementById("keyword-detail-title").textContent = `"${k.keyword}" TOP7 글 목록`;
+  document.getElementById("keyword-detail-modal").hidden = false;
+  renderKeywordDetailList(k);
+}
+
+function renderKeywordDetailList(k) {
+  const listEl = document.getElementById("keyword-detail-list");
+
+  listEl.innerHTML = k.slots
+    .map((s) => {
+      if (!s.title) {
+        return `<div class="content-match-item content-match-item--empty">
+          <div class="content-match-item__meta">${s.position}위 · 미노출</div>
+        </div>`;
+      }
+
+      const label = OWNERSHIP_LABEL[s.ownership] || s.ownership;
+      const canOverride = s.ownership !== "ours_staff";
+      const actions = canOverride
+        ? `<div class="content-match-item__actions">
+            <button class="btn btn-primary" data-kd-decide="confirmed" data-url="${escapeHtml(
+              s.url
+            )}" data-title="${escapeHtml(s.title)}" style="padding:6px 14px;">✓ 우리 체험단 맞음</button>
+            <button class="btn btn-outline" data-kd-decide="rejected" data-url="${escapeHtml(
+              s.url
+            )}" data-title="${escapeHtml(s.title)}" style="padding:6px 14px;">타업체/아니오</button>
+          </div>`
+        : "";
+
+      return `
+      <div class="content-match-item">
+        <div class="content-match-item__title">${s.position}위 · ${escapeHtml(s.title)}</div>
+        <div class="content-match-item__meta">
+          <span class="rank-dot rank-dot--${s.ownership}" style="display:inline-flex; margin-right:6px;">${
+        s.position
+      }</span>${escapeHtml(label)}${s.owner_name ? " · " + escapeHtml(s.owner_name) : ""} ·
+          <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">글 보러가기 ↗</a>
+        </div>
+        ${actions}
+      </div>`;
+    })
+    .join("");
+
+  listEl.querySelectorAll("[data-kd-decide]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      decideKeywordDetailMatch(btn.dataset.url, btn.dataset.title, btn.dataset.kdDecide)
+    );
+  });
+}
+
+async function decideKeywordDetailMatch(url, title, decision) {
+  try {
+    await apiFetch("/api/content-matches/manual", {
+      method: "POST",
+      body: JSON.stringify({ url, title, decision }),
+    });
+    showToast(decision === "confirmed" ? "체험단 글로 확정했습니다." : "우리 글이 아닌 것으로 처리했습니다.");
+    await loadDashboard();
+    const modal = document.getElementById("keyword-detail-modal");
+    if (!modal.hidden && currentDetailKeywordId !== null) {
+      const k = dashboardData.keywords.find((kw) => kw.id === currentDetailKeywordId);
+      if (k) renderKeywordDetailList(k);
+    }
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+function setupKeywordDetailModal() {
+  const modal = document.getElementById("keyword-detail-modal");
+  const closeBtn = document.getElementById("keyword-detail-close");
+  closeBtn.addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
   });
 }
 
@@ -600,6 +690,7 @@ async function loadOnboarding() {
 
 setupAddKeywordModal();
 setupContentMatchModal();
+setupKeywordDetailModal();
 loadDashboard();
 loadProfile();
 loadOnboarding();

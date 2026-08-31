@@ -38,10 +38,31 @@ async def lifespan(app: FastAPI):
     scheduler_service.shutdown_scheduler()
 
 
+def _compute_static_version() -> str:
+    """정적 파일(JS/CSS) URL 뒤에 붙일 캐시 무효화 값.
+
+    static/ 폴더 안 파일들의 수정시각 중 가장 최근 값을 쓴다 - 업데이트로 파일이
+    바뀌면(zip을 새로 풀면 파일들의 mtime이 바뀐다) 이 값도 자동으로 바뀌어서,
+    브라우저가 예전에 캐시해둔 JS/CSS를 절대 재사용하지 않고 새로 받아온다.
+    (no-cache 헤더만으로는, 이미 예전에 캐시가 만들어진 후 업데이트가 있었던 경우
+    브라우저가 그 캐시를 당장 재검증하지 않을 수 있어서 - 실제로 이 문제로 설정
+    화면이 빈 값으로 보이는 등의 오류가 있었다.)
+    """
+    static_dir = BASE_DIR / "static"
+    try:
+        latest = max((p.stat().st_mtime for p in static_dir.rglob("*") if p.is_file()), default=0)
+    except OSError:
+        latest = 0
+    return str(int(latest))
+
+
+STATIC_VERSION = _compute_static_version()
+
 app = FastAPI(title="PT샵 네이버 블로그 매니저", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates.env.globals["static_version"] = STATIC_VERSION
 
 app.include_router(dashboard.router)
 app.include_router(keywords.router)

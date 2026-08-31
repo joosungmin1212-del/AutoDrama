@@ -98,6 +98,21 @@
   </div>
 </div>
 
+<!-- 키워드 TOP7 상세보기 모달 -->
+<div class="modal-overlay" id="keyword-detail-modal" hidden>
+  <div class="modal" style="max-width:600px;">
+    <h3 id="keyword-detail-title">TOP7 글 목록</h3>
+    <p class="page-sub">
+      제목에 업체명/직원 이름이 없으면 자동으로는 못 걸러내요 - 그런 체험단 글은 여기서 직접 "우리 체험단 맞음"으로 확정해두면
+      다음부터 계속 우리 글로 표시됩니다.
+    </p>
+    <div id="keyword-detail-list" style="max-height:440px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="keyword-detail-close">닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- 키워드 추가 모달 -->
 <div class="modal-overlay" id="add-keyword-modal" hidden>
   <div class="modal">
@@ -125,5 +140,5 @@
 
 {% endblock %}
 {% block extra_scripts %}
-<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/dashboard.js?v={{ static_version }}"></script>
 {% endblock %}

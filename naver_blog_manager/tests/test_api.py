@@ -88,6 +88,24 @@ def test_content_match_flow(client):
     assert r.status_code == 422
 
 
+def test_content_match_manual_endpoint_confirms_a_post_without_name_match(client):
+    """대시보드 키워드 TOP7 상세보기에서, 자동 감지에 안 걸린 글도 직접 확정할 수 있다."""
+    r = client.post(
+        "/api/content-matches/manual",
+        json={"url": "https://blog.naver.com/reviewer3/5", "title": "동네 헬스장 후기", "decision": "confirmed"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["decision"] == "confirmed"
+    assert body["matched_text"] == "수동 확인"
+
+    r = client.get("/api/content-matches?status=all")
+    assert len(r.json()) == 1
+
+    r = client.post("/api/content-matches/manual", json={"url": "", "title": "", "decision": "confirmed"})
+    assert r.status_code == 400
+
+
 def test_settings_profile_and_ai_are_independent(client):
     r = client.put("/api/settings/profile", json={"business_name": "OO PT샵"})
     assert r.status_code == 200

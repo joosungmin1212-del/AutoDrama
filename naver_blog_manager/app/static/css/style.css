@@ -359,6 +359,13 @@ button {
   font-weight: 800;
 }
 
+.kw-title--clickable {
+  cursor: pointer;
+}
+.kw-title--clickable:hover {
+  text-decoration: underline;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -400,6 +407,7 @@ button {
 .rank-dots {
   display: flex;
   gap: 5px;
+  cursor: pointer;
 }
 
 .rank-dot {
@@ -526,6 +534,11 @@ button {
   border-radius: var(--radius-md);
   padding: 12px;
   background: var(--bg);
+}
+
+.content-match-item--empty {
+  color: var(--text-faint);
+  padding: 10px 12px;
 }
 
 .content-match-item__title {
