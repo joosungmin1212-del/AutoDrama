@@ -33,8 +33,6 @@ _BLOCK_INDICATORS = [
     "비정상적인 접근",
     "captcha",
     "보안문자",
-    "이용에 불편을 드려",
-    "잠시 후 다시 시도",
 ]
 
 
@@ -46,7 +44,16 @@ class NaverBlockError(RuntimeError):
     """
 
 
-def detect_block(html: str) -> bool:
+def detect_block(html: str, items_found: int = 0) -> bool:
+    """차단/보안문자 페이지로 의심되는지 판단한다.
+
+    검색결과 링크가 하나라도 정상적으로 파싱됐다면(items_found > 0) 절대 차단으로 보지
+    않는다 - "잠시 후 다시 시도"류의 문구는 페이지 안의 광고/위젯 등에도 흔히 등장할 수
+    있어서, 문구만 보고 판단하면 정상적으로 결과가 있는 페이지까지 차단으로 오탐할 수 있다.
+    결과가 아예 하나도 안 잡혔을 때만 이 문구들을 근거로 삼는다.
+    """
+    if items_found > 0:
+        return False
     lowered = html.lower()
     return any(indicator.lower() in lowered for indicator in _BLOCK_INDICATORS)
 
@@ -181,12 +188,12 @@ async def check_keyword_rank(
     조회할 때 rank_service.py에서 브라우저 하나로 돌려쓰기 위함).
     """
     html = await fetch_view_html(keyword, page=page)
-    if detect_block(html):
+    items = parse_view_html(html, top_n=top_n)
+    if detect_block(html, items_found=len(items)):
         raise NaverBlockError(
             f"'{keyword}' 조회 결과가 비정상적입니다 (네이버 차단/보안문자 페이지로 의심됨). "
             "잠시 후 다시 시도해주세요."
         )
-    items = parse_view_html(html, top_n=top_n)
     for item in items:
         ownership, matched = matcher.match_ownership(item.blog_id, registered_blogs)
         item.ownership = ownership
