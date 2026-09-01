@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -6,6 +8,8 @@ from ..db import get_db
 from ..services import dashboard_service
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+TREND_DAYS = 14
 
 
 def _keyword_summary(db: Session, keyword: models.Keyword, staff_blogs: list) -> dict:
@@ -67,4 +71,16 @@ def get_summary(db: Session = Depends(get_db)):
         .count()
     )
     stats = dashboard_service.aggregate_stats(summaries, open_alert_count, pending_content_match_count)
-    return schemas.DashboardResponse(stats=stats, keywords=summaries)
+
+    since = datetime.utcnow() - timedelta(days=TREND_DAYS - 1)
+    keyword_ids = [k.id for k in keywords]
+    checks = (
+        db.query(models.RankCheck)
+        .filter(models.RankCheck.keyword_id.in_(keyword_ids), models.RankCheck.checked_at >= since)
+        .all()
+        if keyword_ids
+        else []
+    )
+    trend = dashboard_service.build_trend_series(checks, days=TREND_DAYS)
+
+    return schemas.DashboardResponse(stats=stats, keywords=summaries, trend=trend)

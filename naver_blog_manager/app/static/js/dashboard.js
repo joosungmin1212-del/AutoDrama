@@ -47,9 +47,11 @@ function accountColorForSlot(s) {
 // 건 아니다 - 같은 체험단 계정이 다른 키워드에선 완전히 다른 업체 글을 쓸 수 있어서,
 // 신원(누구 계정인지)과 이 글의 판정은 따로 본다.
 function ownershipLabel(s) {
-  if (s.ownership === "other" && s.owner_role === "competitor") return "확인된 타업체";
-  if (s.ownership === "other" && s.owner_role === "experience") return "등록된 체험단(이 글 확인 필요)";
-  return OWNERSHIP_LABEL[s.ownership] || s.ownership;
+  let label;
+  if (s.ownership === "other" && s.owner_role === "competitor") label = "확인된 타업체";
+  else if (s.ownership === "other" && s.owner_role === "experience") label = "등록된 체험단(이 글 확인 필요)";
+  else label = OWNERSHIP_LABEL[s.ownership] || s.ownership;
+  return s.content_type === "cafe" ? `${label} · 카페` : label;
 }
 
 function accountColorCss(s) {
@@ -57,8 +59,22 @@ function accountColorCss(s) {
   return color ? `background:${color}; border-color:${color}; color:#fff;` : "";
 }
 
+// 카페 글/경쟁업체는 배경색이 아니라 테두리 색으로만 구분한다("우리 계정" 채워진 원과
+// 헷갈리지 않게 해달라는 요청) - 우리 소유 슬롯(ours_*)은 이미 accountColorCss로
+// 배경까지 확실하게 구분되므로 여기선 건드리지 않는다. 경쟁업체가 우선이고(더 확실한
+// 정보), 그 외 카페 글이면 카페 테두리색을 준다.
+const CAFE_BORDER_COLOR = "#0e7490";
+const COMPETITOR_BORDER_COLOR = "#b91c1c";
+
+function identityBorderCss(s) {
+  if (String(s.ownership || "").startsWith("ours_")) return "";
+  if (s.owner_role === "competitor") return `border-color:${COMPETITOR_BORDER_COLOR}; border-width:2px;`;
+  if (s.content_type === "cafe") return `border-color:${CAFE_BORDER_COLOR}; border-width:2px;`;
+  return "";
+}
+
 function rankDotStyle(s) {
-  const css = accountColorCss(s);
+  const css = accountColorCss(s) + identityBorderCss(s);
   return css ? ` style="${css}"` : "";
 }
 
@@ -77,6 +93,7 @@ async function loadDashboard() {
   renderStats(dashboardData.stats);
   renderFilterTabs(dashboardData.keywords, dashboardData.stats);
   renderKeywordList();
+  renderTrendChart(dashboardData.trend || []);
 }
 
 function renderStats(stats) {
@@ -90,6 +107,78 @@ function renderStats(stats) {
   btn.classList.toggle("filter-tab--alert", stats.pending_content_match_count > 0);
 
   renderSummaryBanner(stats);
+  renderAccountBreakdown(stats.account_breakdown || []);
+}
+
+// ---------- 계정별 노출 현황 ("모니터링 키워드" 카드 옆) ----------
+// 등록된 우리 계정(직원/공식/체험단)들이 지금 모니터링 중인 키워드 TOP7에 합쳐서 몇 개씩
+// 있는지 - rank-dot과 같은 색(accountColorFor(blog_id))으로 표시해서 "이 색 = 이 계정"이
+// 대시보드 전체에서 일관되게 보이도록 한다.
+function renderAccountBreakdown(breakdown) {
+  const box = document.getElementById("account-breakdown-list");
+  if (!box) return;
+  if (!breakdown.length) {
+    box.textContent = "아직 노출된 계정이 없습니다.";
+    return;
+  }
+  box.innerHTML = breakdown
+    .map((a) => {
+      const color = accountColorFor(a.blog_id) || "#9ca3af";
+      return `<div style="display:flex; align-items:center; gap:6px;">
+        <span style="width:9px; height:9px; border-radius:50%; background:${color}; flex:0 0 auto;"></span>
+        <span style="flex:1; color:var(--text-strong, #1c2430);">${escapeHtml(a.name || "이름없음")}</span>
+        <span style="font-weight:700;">${a.count}개</span>
+      </div>`;
+    })
+    .join("");
+}
+
+// ---------- 최근 2주 TOP7 점유 추이 그래프 ----------
+function formatShortDate(isoDate) {
+  const d = new Date(isoDate + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return isoDate;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function renderTrendChart(trend) {
+  const box = document.getElementById("trend-chart");
+  if (!box) return;
+  if (!trend.length) {
+    box.innerHTML = `<div class="page-sub">아직 쌓인 순위 이력이 없습니다. "전체 순위 갱신"을 몇 번 돌리면 여기에 추이가 나타납니다.</div>`;
+    return;
+  }
+
+  const width = 640;
+  const height = 130;
+  const padX = 28;
+  const padY = 18;
+  const maxVal = Math.max(1, ...trend.map((t) => t.our_total));
+  const stepX = trend.length > 1 ? (width - padX * 2) / (trend.length - 1) : 0;
+  const xy = trend.map((t, i) => {
+    const x = padX + i * stepX;
+    const y = height - padY - (t.our_total / maxVal) * (height - padY * 2);
+    return { x, y, t };
+  });
+  const pointsAttr = xy.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const dots = xy
+    .map(
+      (p) =>
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="var(--primary)"><title>${escapeHtml(
+          p.t.date
+        )}: ${p.t.our_total}개</title></circle>`
+    )
+    .join("");
+
+  box.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%; height:${height}px; display:block;">
+      <polyline points="${pointsAttr}" fill="none" stroke="var(--primary)" stroke-width="2" />
+      ${dots}
+    </svg>
+    <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-faint); margin-top:2px;">
+      <span>${escapeHtml(formatShortDate(trend[0].date))}</span>
+      <span>${escapeHtml(formatShortDate(trend[trend.length - 1].date))}</span>
+    </div>
+  `;
 }
 
 // ---------- 지금 확인해야 할 것 요약 배너 ----------
@@ -611,7 +700,7 @@ function renderKeywordDetailList(k) {
         <div class="content-match-item__meta">
           <span class="rank-dot rank-dot--${s.ownership}" style="display:inline-flex; margin-right:6px; ${accountColorCss(
         s
-      )}">${
+      ) + identityBorderCss(s)}">${
         s.position
       }</span>${escapeHtml(label)}${s.owner_name ? " · " + escapeHtml(s.owner_name) : ""} ·
           <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">글 보러가기 ↗</a>

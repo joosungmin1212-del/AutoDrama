@@ -1,6 +1,8 @@
 """대시보드에 필요한 집계 로직 (DB row 등가 객체/딕셔너리만 받아 처리 -> 유닛테스트 용이)."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from .. import config
 from ..models import Ownership
 
@@ -101,6 +103,12 @@ def aggregate_stats(
     experience_breakdown: dict[str, int] = {}
     staff_exposure_count = 0
     experience_exposure_count = 0
+    # 계정(블로그ID) 기준 노출 집계 - "모니터링 키워드" 카드 옆에 "우리 계정들이 지금
+    # 모니터링 중인 키워드들 TOP7에 합쳐서 몇 개나 있는지" 보여주기 위함. 이름이 아니라
+    # owner_blog_id로 묶어야 대시보드 다른 곳(순위뱃지)의 계정별 색상과 정확히 일치하는
+    # 같은 계정으로 식별된다 - 이름은 같은데 다른 계정이거나, 반대로 이름을 바꾼 같은
+    # 계정일 수 있어서 이름만으로 묶으면 rank-dot 색상과 어긋날 수 있다.
+    account_counts: dict[int, dict] = {}
     for k in keyword_summaries:
         for slot in k["slots"]:
             if slot["ownership"] == Ownership.OURS_STAFF.value:
@@ -119,6 +127,15 @@ def aggregate_stats(
                         experience_breakdown.get(slot["owner_name"], 0) + 1
                     )
 
+            if slot["ownership"].startswith("ours_") and slot.get("owner_blog_id"):
+                entry = account_counts.setdefault(
+                    slot["owner_blog_id"],
+                    {"blog_id": slot["owner_blog_id"], "name": slot.get("owner_name") or "", "count": 0},
+                )
+                entry["count"] += 1
+
+    account_breakdown = sorted(account_counts.values(), key=lambda e: (-e["count"], e["name"]))
+
     return {
         "monitored_keywords": monitored,
         "our_total": our_total,
@@ -127,6 +144,49 @@ def aggregate_stats(
         "experience_exposure_count": experience_exposure_count,
         "staff_breakdown": staff_breakdown,
         "experience_breakdown": experience_breakdown,
+        "account_breakdown": account_breakdown,
         "open_alert_count": open_alert_count,
         "pending_content_match_count": pending_content_match_count,
     }
+
+
+def build_trend_series(checks: list, days: int = 14) -> list[dict]:
+    """최근 N일간, "그 날의 마지막 순위체크" 기준으로 전체 키워드 합산 TOP7 점유 추이를 만든다.
+
+    checks 항목은 `.checked_at`/`.keyword_id`/`.results`를 가진 RankCheck ORM 객체 또는
+    동일한 키를 가진 dict 모두 지원한다 - 순서는 상관없다(여기서 날짜/키워드별로 가장 늦은
+    것만 골라낸다). 같은 날 같은 키워드를 여러 번 갱신했어도 그 날의 마지막 스냅샷만
+    대표값으로 쓴다 - 그래야 "하루에 여러 번 눌렀다"고 그래프가 들쭉날쭉해지지 않는다.
+    """
+    if not checks:
+        return []
+
+    since_date = (datetime.utcnow() - timedelta(days=days - 1)).date()
+
+    per_day_latest: dict = {}
+    for c in checks:
+        is_dict = isinstance(c, dict)
+        checked_at = c["checked_at"] if is_dict else c.checked_at
+        keyword_id = c["keyword_id"] if is_dict else c.keyword_id
+        day = checked_at.date()
+        if day < since_date:
+            continue
+
+        bucket = per_day_latest.setdefault(day, {})
+        existing = bucket.get(keyword_id)
+        existing_checked_at = (
+            (existing["checked_at"] if isinstance(existing, dict) else existing.checked_at)
+            if existing is not None
+            else None
+        )
+        if existing is None or checked_at >= existing_checked_at:
+            bucket[keyword_id] = c
+
+    series = []
+    for day in sorted(per_day_latest):
+        total = 0
+        for c in per_day_latest[day].values():
+            results = c["results"] if isinstance(c, dict) else c.results
+            total += count_ours(build_slots(results))
+        series.append({"date": day.isoformat(), "our_total": total})
+    return series

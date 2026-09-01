@@ -683,6 +683,22 @@ button {
   background: var(--amber);
 }
 
+/* 카페 글/경쟁업체는 배경색이 아니라 테두리 색으로만 구분한다 - 배경까지 채우면
+   "우리 계정" 표시에 쓰는 채워진 원과 헷갈릴 수 있어서, 일부러 흰 배경 + 테두리로만 표시. */
+.legend i.cafe,
+.legend i.competitor {
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.legend i.cafe {
+  border: 2px solid #0e7490;
+}
+
+.legend i.competitor {
+  border: 2px solid #b91c1c;
+}
+
 /* ---------- Modal ---------- */
 .modal-overlay {
   position: fixed;

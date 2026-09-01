@@ -120,6 +120,55 @@ def test_dashboard_summary_shape(client):
     assert body["keywords"][0]["staff_presence"] == []
     assert body["keywords"][0]["experience_confirmed_count"] == 0
     assert body["keywords"][0]["experience_pending_count"] == 0
+    assert body["trend"] == []  # 아직 순위체크 이력이 없으니 빈 배열
+    assert body["stats"]["account_breakdown"] == []
+
+
+def test_dashboard_summary_includes_trend_and_account_breakdown(client):
+    """실제로 순위체크 이력이 쌓이면 /api/dashboard/summary가 추이(trend)와 계정별
+    노출 현황(account_breakdown)을 정확히 계산해서 내려줘야 한다."""
+    from datetime import datetime
+
+    from app import models
+    from app.db import SessionLocal
+
+    kw_id = client.post("/api/keywords", json={"keyword": "서상동PT"}).json()["id"]
+    blog = client.post(
+        "/api/blogs",
+        json={"name": "원장", "blog_url": "https://blog.naver.com/wonjang_pt", "role": "staff"},
+    ).json()
+
+    db = SessionLocal()
+    try:
+        check = models.RankCheck(keyword_id=kw_id, checked_at=datetime.utcnow())
+        db.add(check)
+        db.flush()
+        db.add(
+            models.RankResult(
+                rank_check_id=check.id,
+                position=1,
+                content_type="blog",
+                url="https://blog.naver.com/wonjang_pt/1",
+                blog_id="wonjang_pt",
+                title="원장 글",
+                matched_blog_id_fk=blog["id"],
+                ownership="ours_staff",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get("/api/dashboard/summary")
+    assert r.status_code == 200
+    body = r.json()
+
+    assert len(body["trend"]) == 1
+    assert body["trend"][0]["our_total"] == 1
+
+    assert body["stats"]["account_breakdown"] == [
+        {"blog_id": blog["id"], "name": "원장", "count": 1}
+    ]
 
 
 def test_dashboard_shows_staff_presence(client):

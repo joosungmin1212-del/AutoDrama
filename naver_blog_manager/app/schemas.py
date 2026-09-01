@@ -150,6 +150,9 @@ class DashboardStats(BaseModel):
     experience_exposure_count: int
     staff_breakdown: dict[str, int]  # {직원이름: 개수}
     experience_breakdown: dict[str, int]
+    # 계정(블로그ID) 기준 노출 개수 - [{blog_id, name, count}], 많이 나온 순.
+    # "모니터링 키워드" 카드 옆에 "우리 계정들이 지금 TOP7에 합쳐서 몇 개 있는지" 보여주는 데 씀.
+    account_breakdown: list[dict] = []
     open_alert_count: int
     pending_content_match_count: int  # 전체 키워드에서 아직 확인 안 한 체험단 후보 개수
 
@@ -157,6 +160,9 @@ class DashboardStats(BaseModel):
 class DashboardResponse(BaseModel):
     stats: DashboardStats
     keywords: list[KeywordSummaryOut]
+    # 최근 N일간 "그 날의 마지막 순위체크" 기준 전체 키워드 합산 TOP7 점유 추이.
+    # [{date: "2026-08-20", our_total: 5}, ...] 날짜 오름차순.
+    trend: list[dict] = []
 
 
 # ---------- Content Match (체험단 자동 감지) ----------
