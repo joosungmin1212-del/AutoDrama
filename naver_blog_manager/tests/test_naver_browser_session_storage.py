@@ -1,4 +1,42 @@
+import asyncio
+
+import pytest
+
 from app.services import naver_browser
+
+
+@pytest.mark.asyncio
+async def test_watch_and_cleanup_does_not_close_browser_while_still_in_use():
+    """실제로 있었던 심각한 버그 재현: Playwright의 Browser 객체엔 wait_for_event()가
+    없는데(Page/BrowserContext에만 있음) _watch_and_cleanup이 그걸 호출하고 있었다.
+    그래서 AttributeError가 즉시 발생 -> 조용히 삼켜짐 -> playwright.stop()이 곧바로
+    실행되어, "네이버로 보내기"가 글쓰기 화면을 열기도 전에 브라우저가 닫혀버리는
+    문제가 있었다("Target page, context or browser has been closed"). 목(mock)이 아닌
+    실제 Playwright 브라우저로, cleanup 백그라운드 태스크가 떠 있는 동안에도 브라우저가
+    멀쩡히 계속 쓰일 수 있는지 확인한다 - 몽키패치로는 이 버그를 잡을 수 없다(실제
+    Browser 객체의 실제 메서드 존재 여부가 핵심이라서)."""
+    from playwright.async_api import async_playwright
+
+    playwright = await async_playwright().start()
+    try:
+        browser = await playwright.chromium.launch(headless=True)
+    except Exception as exc:  # noqa: BLE001
+        await playwright.stop()
+        pytest.skip(f"이 환경에 pip playwright 버전과 맞는 Chromium이 설치돼 있지 않음: {exc}")
+
+    cleanup_task = asyncio.ensure_future(naver_browser._watch_and_cleanup(playwright, browser))
+
+    # cleanup 태스크가 스케줄되어 한 번 돌 시간을 준다 - 버그가 있었다면 바로 이 시점에
+    # playwright.stop()이 이미 실행돼서 브라우저를 못 쓰게 됐을 것이다.
+    await asyncio.sleep(0.3)
+
+    # 고쳐졌다면 브라우저는 여전히 멀쩡해야 한다 - 실제 open_write_draft()가 하는 것과
+    # 똑같이 new_context()를 호출해본다.
+    context = await browser.new_context()
+    await context.close()
+
+    await browser.close()
+    await asyncio.wait_for(cleanup_task, timeout=5)
 
 
 def test_session_state_is_not_stored_as_plaintext_json(tmp_path, monkeypatch):

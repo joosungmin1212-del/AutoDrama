@@ -93,9 +93,22 @@ async def _watch_and_cleanup(playwright, browser) -> None:
 
     "네이버로 보내기"는 창을 열어둔 채로 함수가 먼저 리턴해야 하므로, 정리는 백그라운드
     태스크로 분리해서 fire-and-forget 한다.
+
+    실제로 있었던 심각한 버그: Playwright의 Browser 객체에는 wait_for_event()라는
+    메서드가 아예 없다(Page/BrowserContext에만 있음). 그런데도 이 코드가
+    `browser.wait_for_event(...)`를 호출하고 있어서 AttributeError가 즉시(대기 없이)
+    발생했고, 그걸 `except Exception: pass`가 조용히 삼킨 뒤 곧바로
+    `playwright.stop()`으로 드라이버를 꺼버렸다 - 그 결과 "네이버로 보내기"가
+    실행되자마자(글쓰기 화면을 열기도 전에) 브라우저/드라이버가 닫혀버려서
+    "Browser.new_context: Target page, context or browser has been closed" 오류로
+    항상 실패했다. Browser는 on()/once()로 이벤트를 등록하는 방식만 지원하므로,
+    asyncio.Event를 이용해 "disconnected" 이벤트가 실제로 발생할 때까지 올바르게
+    기다리도록 고쳤다.
     """
+    disconnected = asyncio.Event()
+    browser.once("disconnected", lambda _b=None: disconnected.set())
     try:
-        await browser.wait_for_event("disconnected", timeout=0)
+        await disconnected.wait()
     except Exception:  # noqa: BLE001
         pass
     finally:
