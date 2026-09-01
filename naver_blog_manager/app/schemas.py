@@ -222,6 +222,8 @@ class WriterGenerateOut(BaseModel):
     content: str
     hashtags: list[str]
     seo_check: SeoCheck
+    template_used: str = ""
+    template_label: str = ""
 
 
 class WriterSendIn(BaseModel):

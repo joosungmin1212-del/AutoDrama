@@ -45,3 +45,92 @@ def test_compute_seo_check_too_short_flagged():
     assert check["length_ok"] is False
     assert check["keyword_count"] == 0
     assert check["keyword_count_ok"] is False
+
+
+def test_build_user_prompt_includes_avoid_template_instruction_when_given():
+    profile = openai_writer.BusinessProfile(business_name="OO PT샵")
+    prompt_without = openai_writer.build_user_prompt("제목", "키워드", "", profile)
+    assert "템플릿" not in prompt_without
+
+    prompt_with = openai_writer.build_user_prompt("제목", "키워드", "", profile, avoid_template="A")
+    assert "템플릿 A" in prompt_with
+    assert openai_writer.TEMPLATE_LABELS["A"] in prompt_with
+
+
+def test_extract_json_and_generate_post_parse_template_used(monkeypatch):
+    """generate_post가 모델 응답의 template_used를 대문자로 정규화해서 담아온다."""
+
+    class _FakeMessage:
+        content = (
+            '{"content": "## 소제목\\n본문", "hashtags": ["#a"], "template_used": "b"}'
+        )
+
+    class _FakeChoice:
+        message = _FakeMessage()
+
+    class _FakeResponse:
+        choices = [_FakeChoice()]
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            return _FakeResponse()
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            pass
+
+        chat = _FakeChat()
+
+    monkeypatch.setattr("openai.OpenAI", _FakeClient)
+
+    result = openai_writer.generate_post(
+        api_key="sk-test",
+        model="gpt-4o-mini",
+        title="제목",
+        keyword="키워드",
+        extra_request="",
+        profile=openai_writer.BusinessProfile(),
+    )
+    assert result.template_used == "B"
+
+
+def test_generate_post_ignores_invalid_template_used(monkeypatch):
+    """모델이 커스텀 프롬프트 등으로 template_used를 아예 안 주거나 이상한 값을 주면
+    빈 문자열로 무시해야 한다 (다음 생성에 잘못된 회피 힌트를 넘기지 않도록)."""
+
+    class _FakeMessage:
+        content = '{"content": "본문", "hashtags": []}'  # template_used 없음
+
+    class _FakeChoice:
+        message = _FakeMessage()
+
+    class _FakeResponse:
+        choices = [_FakeChoice()]
+
+    class _FakeCompletions:
+        def create(self, **kwargs):
+            return _FakeResponse()
+
+    class _FakeChat:
+        completions = _FakeCompletions()
+
+    class _FakeClient:
+        def __init__(self, api_key):
+            pass
+
+        chat = _FakeChat()
+
+    monkeypatch.setattr("openai.OpenAI", _FakeClient)
+
+    result = openai_writer.generate_post(
+        api_key="sk-test",
+        model="gpt-4o-mini",
+        title="제목",
+        keyword="키워드",
+        extra_request="",
+        profile=openai_writer.BusinessProfile(),
+    )
+    assert result.template_used == ""

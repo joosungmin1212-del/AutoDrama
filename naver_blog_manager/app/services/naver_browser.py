@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 
 from .. import config
 from . import secure_storage
@@ -36,6 +37,38 @@ POPUP_CLOSE_SELECTOR = ".se-popup-button-cancel, button.se-help-panel-close-butt
 
 class NaverAuthError(RuntimeError):
     pass
+
+
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def parse_markdown_line(line: str) -> list[tuple[str, bool]]:
+    """openai_writer가 생성한 마크다운 한 줄을 (텍스트, 볼드여부) 조각 목록으로 바꾼다.
+
+    네이버 스마트에디터는 붙여넣은 텍스트의 "## "나 "**...**" 마크다운 문법을 그대로
+    글자로 인식해버려서(즉, 그대로 넣으면 사용자가 "## 소제목" 같은 글자가 그대로
+    보이는 글을 받는다), 여기서 미리 문법을 걷어내고 실제 타이핑할 때 Ctrl+B 토글로
+    굵게 처리할 부분을 알려준다. 호출부(open_write_draft)가 이 목록을 그대로 타이핑하며
+    bold=True인 조각 앞뒤로 Control+B를 눌러 실제 굵게 서식을 적용한다.
+
+    "## "로 시작하는 소제목 줄은 전체를 굵게 처리하고("**"가 안에 섞여 있으면 제거만),
+    일반 줄은 "**...**"로 감싼 부분만 굵게, 나머지는 평문으로 나눈다.
+    """
+    if line.startswith("## "):
+        heading_text = line[3:].replace("**", "")
+        return [(heading_text, True)] if heading_text else []
+
+    segments: list[tuple[str, bool]] = []
+    pos = 0
+    for m in _BOLD_RE.finditer(line):
+        if m.start() > pos:
+            segments.append((line[pos : m.start()], False))
+        if m.group(1):
+            segments.append((m.group(1), True))
+        pos = m.end()
+    if pos < len(line):
+        segments.append((line[pos:], False))
+    return segments
 
 
 def _session_path(blog_id: str | None):
@@ -240,7 +273,15 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
         await page.keyboard.press("Tab")
         await frame.locator(BODY_SELECTOR).first.click(timeout=10000)
         for line in content_html.split("\n"):
-            await page.keyboard.type(line, delay=5)
+            for text, bold in parse_markdown_line(line):
+                if not text:
+                    continue
+                if bold:
+                    await page.keyboard.press("Control+B")
+                    await page.keyboard.type(text, delay=5)
+                    await page.keyboard.press("Control+B")
+                else:
+                    await page.keyboard.type(text, delay=5)
             await page.keyboard.press("Enter")
     except Exception as exc:  # noqa: BLE001
         # 자동 입력이 실패해도 브라우저 창은 열어둔다 - 사용자가 직접 복사/붙여넣기 하도록.

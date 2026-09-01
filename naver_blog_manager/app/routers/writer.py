@@ -30,6 +30,14 @@ def generate(payload: schemas.WriterGenerateIn, db: Session = Depends(get_db)):
         phone=setting.phone,
         strengths=setting.strengths,
     )
+    # 같은 키워드로 매번 똑같은 템플릿(뻔한 스토리)이 나오지 않도록, 지난번에 이 키워드로
+    # 생성했을 때 쓴 템플릿을 먼저 찾아 "이번엔 다른 걸로" 힌트를 넘긴다.
+    keyword_obj = None
+    if payload.keyword:
+        keyword_obj = (
+            db.query(models.Keyword).filter(models.Keyword.keyword == payload.keyword).first()
+        )
+
     try:
         generated = openai_writer.generate_post(
             api_key=secure_storage.unprotect(setting.openai_api_key),
@@ -39,6 +47,7 @@ def generate(payload: schemas.WriterGenerateIn, db: Session = Depends(get_db)):
             extra_request=payload.extra_request,
             profile=profile,
             system_prompt=setting.custom_prompt or None,
+            avoid_template=keyword_obj.last_used_template if keyword_obj else None,
         )
     except openai_writer.WriterError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -49,12 +58,6 @@ def generate(payload: schemas.WriterGenerateIn, db: Session = Depends(get_db)):
         generated.content, payload.keyword or payload.title
     )
 
-    keyword_obj = None
-    if payload.keyword:
-        keyword_obj = (
-            db.query(models.Keyword).filter(models.Keyword.keyword == payload.keyword).first()
-        )
-
     draft = models.Draft(
         title=payload.title,
         keyword_id=keyword_obj.id if keyword_obj else None,
@@ -63,6 +66,8 @@ def generate(payload: schemas.WriterGenerateIn, db: Session = Depends(get_db)):
         seo_meta=json.dumps(seo_check, ensure_ascii=False),
     )
     db.add(draft)
+    if keyword_obj and generated.template_used:
+        keyword_obj.last_used_template = generated.template_used
     db.commit()
     db.refresh(draft)
 
@@ -72,6 +77,8 @@ def generate(payload: schemas.WriterGenerateIn, db: Session = Depends(get_db)):
         content=draft.content,
         hashtags=generated.hashtags,
         seo_check=schemas.SeoCheck(**seo_check),
+        template_used=generated.template_used,
+        template_label=openai_writer.TEMPLATE_LABELS.get(generated.template_used, ""),
     )
 
 

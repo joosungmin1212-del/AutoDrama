@@ -25,7 +25,10 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 # 정식 마이그레이션 도구(Alembic) 없이도, 이미 설치돼서 데이터가 들어있는 사용자의 DB가
 # 업데이트 후에도 깨지지 않도록 여기서 부족한 컬럼만 최소한으로 보충한다.
 _COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
-    "keywords": [("sort_order", "INTEGER DEFAULT 0")],
+    "keywords": [
+        ("sort_order", "INTEGER DEFAULT 0"),
+        ("last_used_template", "VARCHAR(20) DEFAULT ''"),
+    ],
     "settings": [
         ("custom_prompt", "TEXT DEFAULT ''"),
         ("custom_watch_keywords", "TEXT DEFAULT ''"),

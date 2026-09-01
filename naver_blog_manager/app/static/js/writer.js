@@ -65,7 +65,7 @@ document.getElementById("generate-form").addEventListener("submit", async (e) =>
     currentDraftId = res.draft_id;
     currentHashtags = res.hashtags || [];
     document.getElementById("content-box").value = res.content;
-    renderSeoCheck(res.seo_check);
+    renderSeoCheck(res.seo_check, res.template_label);
     renderHashtags(currentHashtags);
     document.getElementById("send-btn").disabled = false;
     showToast("초안을 생성했습니다. 내용을 확인해주세요.");
@@ -77,9 +77,12 @@ document.getElementById("generate-form").addEventListener("submit", async (e) =>
   }
 });
 
-function renderSeoCheck(check) {
+function renderSeoCheck(check, templateLabel) {
   const box = document.getElementById("seo-check-box");
   box.style.display = "flex";
+  const templateBadge = templateLabel
+    ? `<div class="seo-check-item ok">📖 스토리 템플릿: ${escapeHtml(templateLabel)}</div>`
+    : "";
   box.innerHTML = `
     <div class="seo-check-item ${check.length_ok ? "ok" : "warn"}">
       ${check.length_ok ? "✅" : "⚠"} 글자 수 ${check.length}자 (권장 1700~2500자)
@@ -90,6 +93,7 @@ function renderSeoCheck(check) {
     <div class="seo-check-item ${check.subheading_count >= 3 ? "ok" : "warn"}">
       ${check.subheading_count >= 3 ? "✅" : "⚠"} 소제목 ${check.subheading_count}개 (권장 3~5개)
     </div>
+    ${templateBadge}
   `;
 }
 

@@ -301,7 +301,9 @@ def test_writer_generate_uses_settings_profile(client, monkeypatch):
     client.put("/api/settings/profile", json={"business_name": "OO PT샵"})
     client.put("/api/settings/ai", json={"openai_api_key": "sk-test", "openai_model": "gpt-4o-mini"})
 
-    def fake_generate_post(api_key, model, title, keyword, extra_request, profile, system_prompt=None):
+    def fake_generate_post(
+        api_key, model, title, keyword, extra_request, profile, system_prompt=None, avoid_template=None
+    ):
         assert api_key == "sk-test"
         assert profile.business_name == "OO PT샵"
         return openai_writer.GeneratedPost(
@@ -323,3 +325,45 @@ def test_writer_generate_uses_settings_profile(client, monkeypatch):
 def test_writer_generate_without_api_key_returns_400(client):
     r = client.post("/api/writer/generate", json={"title": "제목만 있음"})
     assert r.status_code == 400
+
+
+def test_writer_generate_remembers_and_avoids_repeating_same_template(client, monkeypatch):
+    """같은 키워드로 두 번 연속 생성하면, 두 번째 호출에는 첫 번째에 쓴 템플릿을
+    피하라는 힌트가 넘어가야 한다 - 사용자가 "3~4개 고정 템플릿 자동 매칭"을 요구한
+    기능의 핵심: 같은 키워드로 매번 뻔한 글이 나오지 않도록 자동으로 로테이션한다."""
+    client.put("/api/settings/ai", json={"openai_api_key": "sk-test", "openai_model": "gpt-4o-mini"})
+    client.post("/api/keywords", json={"keyword": "도계동PT", "category": "메인"})
+
+    seen_avoid_templates = []
+
+    def fake_generate_post(
+        api_key, model, title, keyword, extra_request, profile, system_prompt=None, avoid_template=None
+    ):
+        seen_avoid_templates.append(avoid_template)
+        # 두 번째 호출부터는 첫 번째와 다른 템플릿을 "썼다"고 응답
+        used = "B" if avoid_template else "A"
+        return openai_writer.GeneratedPost(
+            content="## 소제목\n" + ("도계동PT " * 6) + "가" * 1700,
+            hashtags=[],
+            template_used=used,
+        )
+
+    monkeypatch.setattr(openai_writer, "generate_post", fake_generate_post)
+
+    r1 = client.post(
+        "/api/writer/generate",
+        json={"title": "1번째 글", "keyword": "도계동PT", "extra_request": ""},
+    )
+    assert r1.status_code == 200
+    assert r1.json()["template_used"] == "A"
+
+    r2 = client.post(
+        "/api/writer/generate",
+        json={"title": "2번째 글", "keyword": "도계동PT", "extra_request": ""},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["template_used"] == "B"
+
+    # 첫 호출엔 피할 템플릿이 없었고(신규), 두 번째 호출엔 첫 호출 결과("A")를 피하라고 넘어갔다
+    assert not seen_avoid_templates[0]
+    assert seen_avoid_templates[1] == "A"

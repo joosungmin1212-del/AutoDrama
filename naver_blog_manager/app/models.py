@@ -104,6 +104,10 @@ class Keyword(Base):
     memo: Mapped[str] = mapped_column(String(300), default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)  # 대시보드 드래그앤드롭 순서
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # 이 키워드로 마지막에 AI가 생성한 글이 어느 고정 스토리 템플릿(A/B/C/D)을 썼는지
+    # 기억해둔다. openai_writer가 다음 생성 때 "이건 쓰지 마" 힌트로 넘겨서, 같은
+    # 키워드로 연달아 똑같은 뻔한 글이 나오는 걸 막는다.
+    last_used_template: Mapped[str] = mapped_column(String(20), default="")
 
     rank_checks: Mapped[list["RankCheck"]] = relationship(
         back_populates="keyword", cascade="all, delete-orphan"
