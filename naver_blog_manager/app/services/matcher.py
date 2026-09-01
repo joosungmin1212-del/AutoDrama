@@ -136,21 +136,39 @@ def match_ownership(identifier: str, registered_blogs: list) -> tuple[str, objec
     표시만 하고, 실제 판정은 글 단위로 함).
 
     registered_blogs: `.blog_id`, `.role` 속성을 가진 객체 리스트 (RegisteredBlog ORM 또는 동등한 dict-like).
+
+    실제로 있었던 문제: 같은 블로그를 "직원"과 (예전 방식인) "공식 블로그" 둘 다로
+    중복 등록해두면, 이 둘 중 DB에서 먼저 나오는 행 하나만 매칭됐다. 그런데 대시보드의
+    직원 체크리스트(build_staff_presence)는 STAFF 행의 id로만 "이 직원 글이 있는지"를
+    판정하기 때문에, 하필 COMPANY 행이 먼저 매칭되면 실제로는 그 직원 글이 맞는데도
+    체크리스트에 "없음(X)"으로 잘못 표시됐다. 그래서 같은 블로그ID로 여러 행이 매칭되면
+    항상 STAFF를 최우선으로 쓰도록 순서를 고정한다.
     """
     if not identifier:
         return Ownership.OTHER.value, None
 
-    for rb in registered_blogs:
-        rb_id = getattr(rb, "blog_id", "") or ""
-        role = getattr(rb, "role", "")
-        if not (rb_id and rb_id.lower() == identifier.lower()):
-            continue
-        if role in _BLANKET_OURS_ROLES:
-            return _ROLE_TO_OWNERSHIP.get(role, Ownership.OTHER.value), rb
-        if role in _BLANKET_OTHER_ROLES:
-            return Ownership.OTHER.value, rb
+    matches = [
+        rb
+        for rb in registered_blogs
+        if (getattr(rb, "blog_id", "") or "").lower() == identifier.lower()
+        and getattr(rb, "role", "") in (_BLANKET_OURS_ROLES | _BLANKET_OTHER_ROLES)
+    ]
+    if not matches:
+        return Ownership.OTHER.value, None
 
-    return Ownership.OTHER.value, None
+    def _role_priority(rb) -> int:
+        role = getattr(rb, "role", "")
+        if role == BlogRole.STAFF.value:
+            return 0
+        if role == BlogRole.COMPANY.value:
+            return 1
+        return 2
+
+    rb = min(matches, key=_role_priority)
+    role = getattr(rb, "role", "")
+    if role in _BLANKET_OURS_ROLES:
+        return _ROLE_TO_OWNERSHIP.get(role, Ownership.OTHER.value), rb
+    return Ownership.OTHER.value, rb
 
 
 def find_known_identity(identifier: str, registered_blogs: list) -> object | None:

@@ -41,6 +41,16 @@ class SettingOut(BaseModel):
     # 업체명 + 등록된 직원/공식블로그 이름 - 사용자가 직접 입력 안 해도 이미 자동으로
     # 감시되고 있는 이름들을 "확인"할 수 있게 보여주기 위한 목록 (읽기 전용, 여기서 수정 불가).
     auto_watch_names: list[str] = []
+    # "네이버로 보내기"가 지금 쓸 계정 - 상단바에 "글쓰기 계정: OOO"로 항상 보여줘서
+    # 헷갈리지 않게 한다. 아직 아무 계정도 안 정해졌으면 둘 다 빈 문자열.
+    active_writer_blog_id: str = ""
+    active_writer_name: str = ""
+
+
+class ActiveWriterIn(BaseModel):
+    """로그인 직후 등록한 블로그를 바로 "지금 쓸 글쓰기 계정"으로 지정할 때 씀."""
+
+    blog_id: str
 
 
 # ---------- Registered Blog ----------
@@ -219,9 +229,9 @@ class WriterSendIn(BaseModel):
     # 미리보기에서 사용자가 고친 내용을 그대로 네이버로 보내기 위함 - 이게 없으면 화면에서
     # 아무리 수정해도 서버에 저장된(=AI가 처음 생성한) 원본 초안이 그대로 전송돼버린다.
     content: str = ""
-    # 공식 블로그(계정)를 여러 개 등록해둔 경우 어디로 보낼지 지정 (RegisteredBlog.id).
-    # 안 주면(0/None) 기존처럼 등록된 공식 블로그 중 하나를 그대로 쓴다(1개만 있을 때 기존 동작 유지).
-    company_blog_id: int | None = None
+    # 글쓰기 계정(직원으로 등록된 블로그)을 여러 개 등록해둔 경우 어디로 보낼지 지정
+    # (RegisteredBlog.id). 안 주면 마지막으로 쓴 계정 -> 없으면 가장 먼저 등록된 계정 순으로 자동 선택된다.
+    writer_blog_id: int | None = None
 
 
 class WriterSendOut(BaseModel):

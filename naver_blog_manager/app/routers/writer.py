@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import naver_browser, openai_writer, secure_storage
+from ..services import naver_browser, openai_writer, secure_storage, writer_account
 
 router = APIRouter(prefix="/api/writer", tags=["writer"])
 
@@ -88,21 +88,12 @@ async def send_to_naver(payload: schemas.WriterSendIn, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="보낼 내용이 비어 있습니다.")
     draft.content = final_content
 
-    company_query = db.query(models.RegisteredBlog).filter(
-        models.RegisteredBlog.role == models.BlogRole.COMPANY.value
-    )
-    if payload.company_blog_id:
-        # 여러 공식 블로그(계정) 중 사용자가 화면에서 고른 계정으로 보낸다.
-        company_blog = company_query.filter(
-            models.RegisteredBlog.id == payload.company_blog_id
-        ).first()
-    else:
-        # 지정 안 하면(공식 블로그가 1개뿐인 기존 사용자) 그냥 첫 번째로 등록된 걸 쓴다.
-        company_blog = company_query.first()
-    if not company_blog or not company_blog.blog_id:
+    setting = _get_or_create_setting(db)
+    target_blog = writer_account.resolve_writer_blog(db, setting, payload.writer_blog_id)
+    if not target_blog or not target_blog.blog_id:
         raise HTTPException(
             status_code=400,
-            detail="공식 블로그가 등록되어 있지 않습니다. 블로그 관리 화면에서 먼저 등록해주세요.",
+            detail="글쓰기 계정이 없습니다. 설정 화면 또는 블로그 관리에서 먼저 네이버 로그인을 해주세요.",
         )
 
     body_with_tags = final_content
@@ -111,13 +102,16 @@ async def send_to_naver(payload: schemas.WriterSendIn, db: Session = Depends(get
         body_with_tags = f"{body_with_tags}\n\n{tags}"
 
     try:
-        await naver_browser.open_write_draft(company_blog.blog_id, draft.title, body_with_tags)
+        await naver_browser.open_write_draft(target_blog.blog_id, draft.title, body_with_tags)
     except naver_browser.NaverAuthError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"네이버 전송 중 오류가 발생했습니다: {exc}")
 
     draft.sent_to_naver_at = datetime.utcnow()
+    # 이번에 실제로 쓴 계정을 "마지막 사용 계정"으로 기억해둔다 - 다음번엔 따로 고르지
+    # 않아도 이 계정이 기본으로 선택된다("로그인했던 계정이 글쓰기 계정" 요구사항).
+    setting.active_writer_blog_id = target_blog.blog_id
     db.commit()
 
     return schemas.WriterSendOut(

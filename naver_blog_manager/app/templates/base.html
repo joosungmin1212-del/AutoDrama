@@ -16,6 +16,9 @@
       <a href="/writer" class="{{ 'active' if active_nav == 'writer' else '' }}">글쓰기</a>
       <a href="/blogs" class="{{ 'active' if active_nav == 'blogs' else '' }}">블로그 관리</a>
       <a href="/settings" class="{{ 'active' if active_nav == 'settings' else '' }}">설정</a>
+      <!-- 지금 "네이버로 보내기"가 실제로 쓸 계정을 항상 보이게 해서, "공식 계정"이라는
+           별도 개념 없이도 "로그인한 계정 = 글쓰기 계정"이 헷갈리지 않게 한다. -->
+      <span id="active-writer-badge" class="active-writer-badge" title="네이버로 보내기가 실제로 쓸 계정" hidden></span>
       <a href="#" id="naver-logout-link" title="네이버 계정 로그아웃" style="color:var(--text-faint); font-size:12.5px; margin-left:6px; padding:8px 10px;">로그아웃</a>
     </nav>
     {% endif %}

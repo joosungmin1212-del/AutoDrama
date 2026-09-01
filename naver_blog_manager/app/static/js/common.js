@@ -51,6 +51,31 @@ function formatDateTime(iso) {
   )}`;
 }
 
+// 모든 페이지 공통: 상단바에 "지금 네이버로 보내기가 쓸 계정"을 항상 보여준다.
+// "공식 블로그"라는 별도 개념 없이, 로그인한 계정이 곧 글쓰기 계정이라는 걸 헷갈리지
+// 않게 하기 위함 - 실제로 사용자가 겪은 혼란(성민본계정이 공식 계정으로도 중복
+// 등록돼 있어서 어느 게 실제로 쓰이는지 알기 어려웠던 문제)에 대한 대응.
+async function updateActiveWriterBadge() {
+  const badge = document.getElementById("active-writer-badge");
+  if (!badge) return;
+  try {
+    const settings = await apiFetch("/api/settings");
+    if (settings.active_writer_name || settings.active_writer_blog_id) {
+      badge.textContent = `✎ ${settings.active_writer_name || settings.active_writer_blog_id}로 글 작성`;
+      badge.classList.remove("active-writer-badge--empty");
+      badge.hidden = false;
+    } else {
+      badge.textContent = "⚠ 글쓰기 계정 없음 (로그인 필요)";
+      badge.classList.add("active-writer-badge--empty");
+      badge.hidden = false;
+    }
+  } catch (e) {
+    badge.hidden = true;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", updateActiveWriterBadge);
+
 // 모든 페이지 공통: 상단 "로그아웃" 링크 (네이버 로그인 화면으로 되돌아간다)
 document.addEventListener("DOMContentLoaded", () => {
   const logoutLink = document.getElementById("naver-logout-link");

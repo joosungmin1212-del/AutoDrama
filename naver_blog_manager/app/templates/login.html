@@ -13,15 +13,21 @@
   </button>
   <p class="page-sub" id="login-status-msg" style="margin-top:14px; min-height:18px;"></p>
 
-  <!-- 로그인 성공 직후, 아직 "공식 블로그"가 하나도 등록 안 돼있으면 바로 이어서
-       물어본다 - "로그인했으면 당연히 그 계정으로 글 쓰겠지"가 실제로 그렇게 되도록,
-       로그인과 등록을 같은 화면/같은 흐름에서 끝낸다. -->
+  <!-- 로그인 성공 직후, 아직 등록된 글쓰기 계정이 하나도 없으면 바로 이어서 물어본다 -
+       "로그인했으면 당연히 그 계정으로 글 쓰겠지"가 실제로 그렇게 되도록, 로그인과
+       등록을 같은 화면/같은 흐름에서 끝낸다. 별도의 "공식 블로그" 역할은 없다 -
+       여기서 등록하는 블로그는 그냥 "직원"으로 등록되고, 그대로 로그인한/글쓰는
+       계정이 된다. -->
   <div id="link-blog-box" hidden style="text-align:left; margin-top:18px; padding-top:18px; border-top:1px solid var(--border);">
     <p class="page-sub" style="margin-bottom:10px;">
-      로그인됐습니다! 이제 방금 로그인한 그 계정의 블로그 주소를 알려주시면, "네이버로 보내기"가 바로
-      그 계정으로 동작합니다.
+      로그인됐습니다! 방금 로그인한 계정을 등록하면, "네이버로 보내기"가 바로 이
+      계정으로 동작합니다. (대시보드 TOP7에서 "우리 글"로도 자동으로 잡힙니다)
     </p>
     <form id="link-blog-form">
+      <div class="field" style="margin-bottom:10px;">
+        <label>이 계정 이름 (예: 원장, 본계정)</label>
+        <input type="text" name="name" placeholder="예: 원장" required />
+      </div>
       <div class="field" style="margin-bottom:10px;">
         <label>블로그 주소</label>
         <input type="text" name="blog_url" placeholder="https://blog.naver.com/아이디" required />

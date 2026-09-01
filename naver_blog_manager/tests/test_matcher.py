@@ -3,10 +3,11 @@ from app.services import matcher
 
 
 class FakeBlog:
-    def __init__(self, blog_id: str, role: str, name: str = "test"):
+    def __init__(self, blog_id: str, role: str, name: str = "test", id: int | None = None):
         self.blog_id = blog_id
         self.role = role
         self.name = name
+        self.id = id
 
 
 def test_extract_identifier_blog_url():
@@ -82,6 +83,26 @@ def test_match_ownership_blanket_matches_competitor_but_not_experience():
     ownership, matched = matcher.match_ownership("freelance_reviewer", blogs)
     assert ownership == Ownership.OTHER.value
     assert matched is None
+
+
+def test_match_ownership_prefers_staff_row_when_same_blog_id_registered_twice():
+    """실제로 사용자가 겪은 버그 재현: 같은 블로그를 "직원"과 (예전 방식인) "공식
+    블로그" 둘 다로 중복 등록해두면, 대시보드 직원 체크리스트가 STAFF 행의 id로만
+    "존재 여부"를 판정하기 때문에 하필 COMPANY 행이 먼저 매칭되면 실제로는 그 직원
+    글이 맞는데도 체크리스트에 "없음(X)"으로 잘못 표시됐다. 등록 순서(리스트 순서)와
+    무관하게 항상 STAFF 행이 매칭돼야 한다."""
+    staff_row = FakeBlog("sm_main", BlogRole.STAFF.value, "성민본계정", id=1)
+    company_row = FakeBlog("sm_main", BlogRole.COMPANY.value, "성민본계정(공식)", id=2)
+
+    # COMPANY 행이 리스트에서 먼저 나오는 경우(예: DB 쿼리 순서가 그렇게 나온 경우)에도
+    ownership, matched = matcher.match_ownership("sm_main", [company_row, staff_row])
+    assert ownership == Ownership.OURS_STAFF.value
+    assert matched.id == 1
+
+    # 순서를 반대로 해도(STAFF가 먼저) 당연히 그대로 STAFF가 매칭돼야 한다.
+    ownership, matched = matcher.match_ownership("sm_main", [staff_row, company_row])
+    assert ownership == Ownership.OURS_STAFF.value
+    assert matched.id == 1
 
 
 def test_find_known_identity_finds_experience_for_display_only():

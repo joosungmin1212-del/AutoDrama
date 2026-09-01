@@ -67,6 +67,14 @@ class Setting(Base):
     # 체험단 자동 확인(제목 매칭)에 쓸 추가 감시 키워드 - 쉼표/줄바꿈으로 구분해 저장.
     # 업체명/등록된 직원·공식블로그 이름은 자동으로 포함되므로 중복 입력할 필요 없음.
     custom_watch_keywords: Mapped[str] = mapped_column(Text, default="")
+    # "네이버로 보내기"가 보낼 블로그ID - "공식 블로그"라는 별도 역할을 등록해두는 대신,
+    # 실제로 로그인한 계정이 곧 글쓰기 계정이 되도록 한다. 로그인(기본 세션이든, 특정
+    # 계정 전용 세션이든)에 성공할 때마다, 또는 글쓰기 화면에서 계정을 바꿀 때마다
+    # 갱신된다. 실제로 있었던 문제: "공식 블로그" 역할을 따로 요구하다 보니, 이미
+    # "직원"으로 등록해둔 블로그를 "공식 블로그"로 중복 등록하는 사용자가 있었는데,
+    # 그러면 같은 블로그ID를 가진 두 행 중 어느 걸 매칭하느냐에 따라 대시보드의
+    # 직원 체크리스트가 틀리게 표시되는 버그가 생겼다.
+    active_writer_blog_id: Mapped[str] = mapped_column(String(200), default="")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )

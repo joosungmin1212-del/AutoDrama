@@ -246,6 +246,20 @@ def test_settings_profile_and_ai_are_independent(client):
     assert r.json()["openai_api_key_set"] is True
 
 
+def test_set_active_writer_updates_setting(client):
+    client.post(
+        "/api/blogs",
+        json={"name": "본계정", "blog_url": "https://blog.naver.com/main_account", "role": "staff"},
+    )
+
+    r = client.put("/api/settings/active-writer", json={"blog_id": "main_account"})
+    assert r.status_code == 200
+    assert r.json()["active_writer_blog_id"] == "main_account"
+    assert r.json()["active_writer_name"] == "본계정"
+
+    assert client.get("/api/settings").json()["active_writer_blog_id"] == "main_account"
+
+
 def test_settings_ai_reschedules_scheduler_when_interval_changes(client, monkeypatch):
     """설정에서 순위 자동 체크 주기를 바꾸면, 실행 중인 스케줄러도 재시작 없이 반영돼야 한다.
 

@@ -8,18 +8,27 @@ if (params.get("keyword")) {
   document.getElementById("title-input").focus();
 }
 
-// 공식 블로그(계정)가 2개 이상 등록돼 있으면 "보낼 계정"을 고를 수 있게 한다 -
-// 1개뿐이면(대부분의 경우) 기존처럼 신경 쓸 필요 없이 자동으로 그 계정으로 보낸다.
+// 글쓰기 계정(직원으로 등록한 블로그)이 2개 이상이면 "보낼 계정"을 고를 수 있게 한다 -
+// 1개뿐이면(대부분의 경우) 기존처럼 신경 쓸 필요 없이 자동으로 그 계정(=마지막으로
+// 로그인/전송한 계정)으로 보낸다. "공식 블로그"라는 별도 역할은 더 이상 없다 - 이미
+// 직원으로 등록해둔 블로그 자체가 계정 후보다.
 async function loadSendAccountOptions() {
   try {
-    const blogs = await apiFetch("/api/blogs");
-    const companyBlogs = blogs.filter((b) => b.role === "company");
+    const [accounts, settings] = await Promise.all([
+      apiFetch("/api/naver-auth/accounts"),
+      apiFetch("/api/settings"),
+    ]);
     const field = document.getElementById("send-account-field");
     const select = document.getElementById("send-account-select");
-    if (companyBlogs.length > 1) {
-      select.innerHTML = companyBlogs
-        .map((b) => `<option value="${b.id}">${escapeHtml(b.name)} (${escapeHtml(b.blog_id)})</option>`)
+    if (accounts.length > 1) {
+      select.innerHTML = accounts
+        .map((a) => `<option value="${a.blog_pk}">${escapeHtml(a.name)} (${escapeHtml(a.blog_id)})</option>`)
         .join("");
+      // 마지막으로 쓴 계정을 기본 선택값으로 - 매번 다시 고를 필요 없게.
+      const activeAccount = accounts.find(
+        (a) => a.blog_id.toLowerCase() === (settings.active_writer_blog_id || "").toLowerCase()
+      );
+      if (activeAccount) select.value = String(activeAccount.blog_pk);
       field.hidden = false;
     } else {
       field.hidden = true;
@@ -106,7 +115,7 @@ document.getElementById("send-btn").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "네이버 창을 여는 중...";
   const accountField = document.getElementById("send-account-field");
-  const companyBlogId =
+  const writerBlogId =
     !accountField.hidden && document.getElementById("send-account-select").value
       ? Number(document.getElementById("send-account-select").value)
       : null;
@@ -118,10 +127,11 @@ document.getElementById("send-btn").addEventListener("click", async () => {
       body: JSON.stringify({
         draft_id: currentDraftId,
         content: document.getElementById("content-box").value,
-        company_blog_id: companyBlogId,
+        writer_blog_id: writerBlogId,
       }),
     });
     showToast(res.message);
+    if (typeof updateActiveWriterBadge === "function") updateActiveWriterBadge();
   } catch (e) {
     showToast(e.message + " (복사하기 버튼으로 직접 붙여넣어도 됩니다)", true);
   } finally {

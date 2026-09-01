@@ -926,9 +926,8 @@ async function loadOnboarding() {
   const card = document.getElementById("onboarding-card");
   if (!card) return;
   try {
-    const [settings, blogs, dash] = await Promise.all([
+    const [settings, dash] = await Promise.all([
       apiFetch("/api/settings"),
-      apiFetch("/api/blogs"),
       apiFetch("/api/dashboard/summary"),
     ]);
 
@@ -943,12 +942,11 @@ async function loadOnboarding() {
       },
       { label: "OpenAI API 키 설정", done: settings.openai_api_key_set, href: "/settings" },
       {
-        // "직원"/"체험단" 등록만으로는 체크가 안 된다 - "네이버로 보내기"는 반드시
-        // "공식 블로그"로 등록된 계정만 쓰기 때문에, 실제로는 다른 역할로만 블로그를
-        // 등록해놓고 이 항목이 완료로 표시돼서 "다 됐다"고 착각하다가, 정작 글쓰기에서
-        // "공식 블로그가 없습니다" 오류를 만나는 문제가 실제로 있었다.
-        label: "공식 블로그 등록 (네이버로 보내기에 쓸 내 계정)",
-        done: blogs.some((b) => b.role === "company"),
+        // "체험단"/"경쟁업체" 등록만으로는 체크가 안 된다 - "네이버로 보내기"는 실제로
+        // 로그인한 계정을 쓰기 때문에, 로그인을 아직 안 했으면 이 항목은 미완료여야
+        // 한다(settings.active_writer_blog_id가 그걸 정확히 반영한다).
+        label: "네이버 로그인 (네이버로 보내기에 쓸 계정)",
+        done: !!settings.active_writer_blog_id,
         href: "/blogs",
       },
       {

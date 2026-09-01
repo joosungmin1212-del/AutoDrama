@@ -36,6 +36,43 @@ def test_count_by_ownership():
     assert dashboard_service.count_by_ownership(slots, "ours_experience") == 1
 
 
+def test_build_staff_presence_reflects_reality_despite_duplicate_role_registration():
+    """실제로 사용자가 겪은 버그의 전체 파이프라인 재현: 성민본계정을 "직원"과 (예전
+    방식인) "공식 블로그" 둘 다로 중복 등록해도, matcher.match_ownership이 STAFF 행을
+    우선 매칭하도록 고쳤으니 build_slots -> build_staff_presence까지 이어져도 정확히
+    "있음(True)"으로 나와야 한다."""
+    from app.services import matcher
+
+    class _Blog:
+        def __init__(self, blog_id, role, name, id):
+            self.blog_id = blog_id
+            self.role = role
+            self.name = name
+            self.id = id
+
+    staff_row = _Blog("sm_main", "staff", "성민본계정", id=1)
+    company_row = _Blog("sm_main", "company", "성민본계정(공식)", id=2)
+    registered = [company_row, staff_row]  # 공식 블로그 행이 먼저 나오는 순서로 재현
+
+    ownership, matched = matcher.match_ownership("sm_main", registered)
+
+    rank_results = [
+        {
+            "position": 6,
+            "ownership": ownership,
+            "owner_name": matched.name,
+            "owner_blog_id": matched.id,
+            "title": "성민본계정 글",
+            "url": "https://blog.naver.com/sm_main/6",
+            "content_type": "blog",
+        }
+    ]
+    slots = dashboard_service.build_slots(rank_results)
+    presence = dashboard_service.build_staff_presence(slots, [staff_row])
+
+    assert presence == [{"id": 1, "name": "성민본계정", "present": True}]
+
+
 def test_build_staff_presence_marks_present_by_blog_id():
     slots = [
         {"ownership": "ours_staff", "owner_blog_id": 1, "owner_name": "원장"},

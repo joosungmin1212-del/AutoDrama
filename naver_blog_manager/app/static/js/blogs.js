@@ -73,31 +73,36 @@ document.getElementById("add-blog-form").addEventListener("submit", async (e) =>
   }
 });
 
-// ---------- 네이버 계정(공식 블로그별 로그인) ----------
-// 공식 블로그를 1개만 등록해 쓰는 대부분의 경우엔 이 카드 자체를 숨긴다 - 기존
-// 사용자에게는 화면이 그대로 보이도록. 2개 이상일 때만 계정 전환이 의미가 있어 보여준다.
+// ---------- 네이버 계정(직원 블로그별 로그인) ----------
+// 등록된 계정이 하나도 없으면 이 카드 자체를 숨긴다. 1개든 여러 개든, 있으면 항상
+// 보여줘서 "지금 어느 계정이 활성 상태인지"가 늘 명확하게 보이도록 한다.
 async function loadNaverAccounts() {
   const card = document.getElementById("naver-accounts-card");
   const tbody = document.getElementById("naver-account-table-body");
   let accounts;
+  let settings;
   try {
-    accounts = await apiFetch("/api/naver-auth/accounts");
+    [accounts, settings] = await Promise.all([
+      apiFetch("/api/naver-auth/accounts"),
+      apiFetch("/api/settings"),
+    ]);
   } catch (e) {
     card.style.display = "none";
     return;
   }
 
-  if (accounts.length < 2) {
+  if (accounts.length < 1) {
     card.style.display = "none";
     return;
   }
   card.style.display = "";
 
   tbody.innerHTML = accounts
-    .map(
-      (a) => `
-    <tr>
-      <td>${escapeHtml(a.name)}</td>
+    .map((a) => {
+      const isActive = a.blog_id.toLowerCase() === (settings.active_writer_blog_id || "").toLowerCase();
+      return `
+    <tr${isActive ? ' style="background:var(--primary-soft);"' : ""}>
+      <td>${escapeHtml(a.name)}${isActive ? ' <span style="font-size:11px; color:var(--primary-dark); font-weight:700;">● 활성</span>' : ""}</td>
       <td>${escapeHtml(a.blog_id)}</td>
       <td>${a.logged_in ? "✅ 로그인됨" : "⬜ 로그인 필요"}</td>
       <td>
@@ -112,8 +117,8 @@ async function loadNaverAccounts() {
             : ""
         }
       </td>
-    </tr>`
-    )
+    </tr>`;
+    })
     .join("");
 
   tbody.querySelectorAll("[data-naver-login]").forEach((btn) => {
@@ -130,8 +135,9 @@ async function naverAccountLogin(blogId, btn) {
   btn.textContent = "브라우저 창에서 로그인해주세요...";
   try {
     await apiFetch(`/api/naver-auth/login?blog_id=${encodeURIComponent(blogId)}`, { method: "POST" });
-    showToast("로그인되었습니다.");
+    showToast("로그인되었습니다. 이 계정이 글쓰기 계정으로 활성화됐습니다.");
     await loadNaverAccounts();
+    if (typeof updateActiveWriterBadge === "function") updateActiveWriterBadge();
   } catch (e) {
     showToast(e.message, true);
     btn.disabled = false;

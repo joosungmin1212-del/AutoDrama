@@ -29,6 +29,7 @@ _COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
     "settings": [
         ("custom_prompt", "TEXT DEFAULT ''"),
         ("custom_watch_keywords", "TEXT DEFAULT ''"),
+        ("active_writer_blog_id", "VARCHAR(200) DEFAULT ''"),
     ],
     "alerts": [("blog_id", "VARCHAR(200) DEFAULT ''")],
 }
