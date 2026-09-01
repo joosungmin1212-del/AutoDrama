@@ -32,60 +32,106 @@ LOGIN_URL = "https://nid.naver.com/nidlogin.login"
 EDITOR_IFRAME_SELECTOR = "iframe#mainFrame"
 TITLE_SELECTOR = ".se-title-text, .se-placeholder.__se-placeholder"
 BODY_SELECTOR = ".se-main-container"
-POPUP_CLOSE_SELECTOR = ".se-popup-button-cancel, button.se-help-panel-close-button"
-# "작성 중인 글이 있습니다 - 이어서 작성하시겠습니까?" 확인창의 "취소" 버튼. 실제
-# 사용자가 겪은 오류 로그에 이 팝업의 DOM이 그대로 찍혀 있어서(data-group="popupLayer",
-# data-name="se-popup-alert se-popup-confirm") 정확히 알아낸 선택자다.
-RESUME_DRAFT_CANCEL_SELECTOR = '[data-group="popupLayer"] button:has-text("취소")'
+
+# "작성 중인 글이 있습니다"/"도움말" 팝업을 iframe(#mainFrame) 문서 "안"에서 텍스트로
+# 찾아 닫는 JS. 처음엔 이 팝업들을 top-level page에서 CSS class로 찾으려 했다가 두
+# 차례 실패했다 - 실제로는 iframe 문서 안에 있어서 page.locator()로는 애초에 보이지
+# 않았다. 다른 개발자가 실제로 검증한 오픈소스 구현(MIT: csh1668/naver-blog-automation,
+# app/src/main/assets/editor_bridge.js)을 참고해, class 이름 대신 "정확한 버튼
+# 텍스트 + 팝업 컨테이너(role=dialog 또는 layer/popup/modal/dialog 클래스) 안에서만"
+# 찾는 방식으로 재작성했다 - 네이버가 class 이름을 바꿔도 텍스트("취소"/"닫기")는
+# 잘 안 바뀌므로 이쪽이 훨씬 오래간다.
+_DISMISS_POPUPS_JS = r"""
+() => {
+  function className(n) {
+    var c = n && n.className;
+    if (c && typeof c === 'object' && 'baseVal' in c) c = c.baseVal;
+    return String(c || '').toLowerCase();
+  }
+  function visible(n) {
+    try { var r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (e) { return false; }
+  }
+  function inToolbar(n) {
+    for (var p = n; p; p = p.parentElement) {
+      if (/toolbar/.test(className(p)) || /toolbar/.test(String(p.id || '').toLowerCase())) return true;
+    }
+    return false;
+  }
+  function isLayerContainer(n) {
+    return !!n && (/layer|popup|modal|dialog/.test(className(n)) || (n.getAttribute && n.getAttribute('role') === 'dialog'));
+  }
+  function popupContainer(node) {
+    for (var p = node.parentElement, i = 0; p && i < 8; p = p.parentElement, i++) {
+      if (isLayerContainer(p)) return p;
+    }
+    return null;
+  }
+  function clickInside(container, label) {
+    if (!container) return false;
+    var nodes = Array.prototype.slice.call(container.querySelectorAll('button, a, [role="button"]'));
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if ((n.innerText || n.textContent || '').trim() !== label) continue;
+      if (!visible(n) || inToolbar(n)) continue;
+      n.click();
+      return true;
+    }
+    return false;
+  }
+  function dismissDraftDialog(doc) {
+    var roots = doc.querySelectorAll('[role="dialog"], .se-popup, .__se-pop-layer');
+    for (var i = 0; i < roots.length; i++) {
+      var root = roots[i];
+      if (!visible(root)) continue;
+      if ((root.textContent || '').indexOf('작성 중인 글이 있습니다') === -1) continue;
+      if (clickInside(root, '취소')) return true;
+    }
+    return false;
+  }
+  var frame = document.querySelector('iframe#mainFrame');
+  var doc = frame && frame.contentWindow && frame.contentWindow.document;
+  if (!doc) return 0;
+  var count = 0;
+  if (dismissDraftDialog(doc)) count++;
+  var nodes = Array.prototype.slice.call(doc.querySelectorAll('button, a, [role="button"]'));
+  nodes.forEach(function (n) {
+    if ((n.innerText || n.textContent || '').trim() !== '닫기') return;
+    if (!visible(n) || inToolbar(n)) return;
+    if (!isLayerContainer(popupContainer(n))) return;
+    n.click();
+    count++;
+  });
+  return count;
+}
+"""
 
 
 class NaverAuthError(RuntimeError):
     pass
 
 
-async def _try_dismiss_resume_draft_dialog(page) -> None:
-    """"작성 중인 글이 있습니다. 이어서 작성하시겠습니까?" 대화상자가 뜨면 항상
-    "취소"를 눌러 새 글로 시작한다.
+async def _dismiss_editor_popups(page) -> int:
+    """"작성 중인 글이 있습니다" 확인창의 "취소"와, "도움말" 등 안내 레이어의
+    "닫기" 버튼을 iframe(#mainFrame) 문서 안에서 찾아 자동으로 닫는다.
 
-    실제로 있었던 문제: 이전에 자동화가 실패했거나 사용자가 직접 쓰다 만 초안이
-    남아있으면, 새로 글쓰기 화면을 열 때마다 네이버가 이 확인창을 띄운다. 이 창은
-    화면 전체를 덮는 반투명 배경(dim)을 깔기 때문에, 이걸 안 닫으면 제목/본문 클릭이
-    전부 막혀버린다("subtree intercepts pointer events" 오류로 나타남). "이어서
-    작성"(확인)을 누르면 예전 내용 위에 새로 생성한 글이 덧붙여져 뒤죽박죽되므로,
-    항상 "취소"를 눌러 빈 글로 새로 시작하는 게 안전하다.
-
-    없으면(=선택자가 안 잡히면) 조용히 넘어간다.
+    "이어서 작성"(확인)을 누르면 예전 내용 위에 새로 생성한 글이 덧붙여져
+    뒤죽박죽되므로, 항상 "취소"를 눌러 빈 글로 새로 시작한다. 팝업이 없으면
+    아무 일도 안 하고 0을 반환한다 - 페이지마다 뜨거나 안 뜨거나 하므로 정상이다.
     """
     try:
-        await page.locator(RESUME_DRAFT_CANCEL_SELECTOR).first.click(timeout=1500)
+        return await page.evaluate(_DISMISS_POPUPS_JS)
     except Exception:  # noqa: BLE001
-        pass
-
-
-async def _try_close_popup(page) -> None:
-    """"이어쓰기/취소" 팝업이나 "도움말"(What's New) 안내 패널이 떠 있으면 닫는다.
-
-    없으면(=선택자가 안 잡히면) 조용히 넘어간다 - 페이지마다 뜨거나 안 뜨거나 하므로
-    실패해도 정상 상황이다. 실제로 있었던 문제: 이 시도를 페이지 진입 직후 딱 한 번만
-    했었는데, "도움말" 패널이 그보다 늦게(제목을 입력하는 동안) 뒤늦게 뜨는 경우가 있어
-    본문 입력 클릭이 패널에 가려 타임아웃나는 원인이 됐다. 그래서 호출부(open_write_draft)가
-    이 함수를 여러 시점(페이지 진입 직후 + 본문 클릭 직전)에 다시 부른다.
-    """
-    try:
-        await page.locator(POPUP_CLOSE_SELECTOR).first.click(timeout=1500)
-    except Exception:  # noqa: BLE001
-        pass
+        return 0
 
 
 async def _click_with_recovery(page, frame, selector: str) -> None:
     """에디터 안의 요소(제목/본문)를 클릭한다.
 
-    실제로 있었던 문제: "작성 중인 글이 있습니다" 확인창이나 "도움말" 안내 패널을
-    선택자로 찾아 미리 닫아보려 했지만(_try_dismiss_resume_draft_dialog,
-    _try_close_popup), 두 차례 다 실제 팝업의 class/구조와 안 맞아 실패했다 -
-    사용자가 결국 직접 "취소"를 눌러야 했다. 네이버 쪽 내부 DOM은 공개 문서가 없고
-    예고 없이 바뀌므로, 선택자를 더 추측하는 대신 **선택자에 의존하지 않는** 방식으로
-    바꿨다:
+    실제로 있었던 문제: "작성 중인 글이 있습니다" 확인창이나 "도움말" 안내 패널을 CSS
+    class 선택자로 top-level page에서 찾아 미리 닫아보려 했지만, 두 차례 다 실패했다
+    (알고 보니 그 팝업들은 iframe 문서 안에 있었다 - _dismiss_editor_popups 참고).
+    이 함수는 그 근본 수정과는 별개로, 그래도 뭔가 예상 못한 이유로 여전히 클릭이
+    막힐 때를 대비한 **선택자에 의존하지 않는** 마지막 안전망이다:
       1) 일반 클릭 시도
       2) 실패하면 Escape를 두 번 눌러본다 - 웬만한 안내 패널/확인창은 Escape로
          닫히므로, 그 팝업이 무엇이든 상관없이 통한다
@@ -352,25 +398,21 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
     await page.goto(WRITE_URL_TMPL.format(blog_id=blog_id), wait_until="domcontentloaded")
 
     # 새 글쓰기 진입 시 뜨는 "쓰다 만 글 이어서 작성" 확인창(있으면 "취소"로 새 글
-    # 시작) + "이어쓰기/도움말" 등 팝업 처리 (있으면 닫고, 없으면 무시). 이어서 작성
+    # 시작) + "도움말" 등 안내 레이어 처리 (있으면 닫고, 없으면 무시). 이어서 작성
     # 확인창은 화면 전체를 덮는 배경을 깔아 다른 클릭을 다 막아버리므로 먼저 처리한다.
-    await _try_dismiss_resume_draft_dialog(page)
-    await _try_close_popup(page)
+    await _dismiss_editor_popups(page)
 
     frame = page.frame_locator(EDITOR_IFRAME_SELECTOR)
 
     try:
-        # 제목/본문 클릭 모두 선택자 기반 팝업닫기에 기대지 않고, 뭐가 됐든(도움말
-        # 패널이든 확인창이든) Escape+강제클릭으로 뚫고 지나가도록 한다 (위
-        # _click_with_recovery 설명 참고) - 위의 선택자 기반 시도들은 맞으면 더
-        # 빠르게 해결되니 그대로 두되, 안 맞아도 이게 최종 안전망이 된다.
+        # 제목/본문 클릭 모두, 위 _dismiss_editor_popups가 뭔가를 놓쳐도 뚫고
+        # 지나가도록 Escape+강제포커스 안전망을 함께 쓴다 (_click_with_recovery 설명 참고).
         await _click_with_recovery(page, frame, TITLE_SELECTOR)
         await page.keyboard.type(title, delay=15)
         await page.keyboard.press("Tab")
         # 제목을 입력하는 동안 위 팝업들이 뒤늦게 뜨는 경우가 있어, 본문을 클릭하기
         # 직전에 한 번 더 시도한다 (위 주석 참고).
-        await _try_dismiss_resume_draft_dialog(page)
-        await _try_close_popup(page)
+        await _dismiss_editor_popups(page)
         await _click_with_recovery(page, frame, BODY_SELECTOR)
         for line in content_html.split("\n"):
             for text, bold in parse_markdown_line(line):
