@@ -33,10 +33,33 @@ EDITOR_IFRAME_SELECTOR = "iframe#mainFrame"
 TITLE_SELECTOR = ".se-title-text, .se-placeholder.__se-placeholder"
 BODY_SELECTOR = ".se-main-container"
 POPUP_CLOSE_SELECTOR = ".se-popup-button-cancel, button.se-help-panel-close-button"
+# "작성 중인 글이 있습니다 - 이어서 작성하시겠습니까?" 확인창의 "취소" 버튼. 실제
+# 사용자가 겪은 오류 로그에 이 팝업의 DOM이 그대로 찍혀 있어서(data-group="popupLayer",
+# data-name="se-popup-alert se-popup-confirm") 정확히 알아낸 선택자다.
+RESUME_DRAFT_CANCEL_SELECTOR = '[data-group="popupLayer"] button:has-text("취소")'
 
 
 class NaverAuthError(RuntimeError):
     pass
+
+
+async def _try_dismiss_resume_draft_dialog(page) -> None:
+    """"작성 중인 글이 있습니다. 이어서 작성하시겠습니까?" 대화상자가 뜨면 항상
+    "취소"를 눌러 새 글로 시작한다.
+
+    실제로 있었던 문제: 이전에 자동화가 실패했거나 사용자가 직접 쓰다 만 초안이
+    남아있으면, 새로 글쓰기 화면을 열 때마다 네이버가 이 확인창을 띄운다. 이 창은
+    화면 전체를 덮는 반투명 배경(dim)을 깔기 때문에, 이걸 안 닫으면 제목/본문 클릭이
+    전부 막혀버린다("subtree intercepts pointer events" 오류로 나타남). "이어서
+    작성"(확인)을 누르면 예전 내용 위에 새로 생성한 글이 덧붙여져 뒤죽박죽되므로,
+    항상 "취소"를 눌러 빈 글로 새로 시작하는 게 안전하다.
+
+    없으면(=선택자가 안 잡히면) 조용히 넘어간다.
+    """
+    try:
+        await page.locator(RESUME_DRAFT_CANCEL_SELECTOR).first.click(timeout=1500)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 async def _try_close_popup(page) -> None:
@@ -274,7 +297,10 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
     page = await context.new_page()
     await page.goto(WRITE_URL_TMPL.format(blog_id=blog_id), wait_until="domcontentloaded")
 
-    # 새 글쓰기 진입 시 뜨는 "이어쓰기/취소" 등 팝업 처리 (있으면 닫고, 없으면 무시)
+    # 새 글쓰기 진입 시 뜨는 "쓰다 만 글 이어서 작성" 확인창(있으면 "취소"로 새 글
+    # 시작) + "이어쓰기/도움말" 등 팝업 처리 (있으면 닫고, 없으면 무시). 이어서 작성
+    # 확인창은 화면 전체를 덮는 배경을 깔아 다른 클릭을 다 막아버리므로 먼저 처리한다.
+    await _try_dismiss_resume_draft_dialog(page)
     await _try_close_popup(page)
 
     frame = page.frame_locator(EDITOR_IFRAME_SELECTOR)
@@ -283,8 +309,9 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
         await frame.locator(TITLE_SELECTOR).first.click(timeout=10000)
         await page.keyboard.type(title, delay=15)
         await page.keyboard.press("Tab")
-        # 제목을 입력하는 동안 "도움말" 안내 패널이 뒤늦게 뜨는 경우가 있어, 본문을
-        # 클릭하기 직전에 한 번 더 팝업 닫기를 시도한다 (위 주석 참고).
+        # 제목을 입력하는 동안 위 팝업들이 뒤늦게 뜨는 경우가 있어, 본문을 클릭하기
+        # 직전에 한 번 더 시도한다 (위 주석 참고).
+        await _try_dismiss_resume_draft_dialog(page)
         await _try_close_popup(page)
         await frame.locator(BODY_SELECTOR).first.click(timeout=10000)
         for line in content_html.split("\n"):
