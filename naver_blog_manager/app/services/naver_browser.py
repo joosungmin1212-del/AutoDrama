@@ -39,6 +39,21 @@ class NaverAuthError(RuntimeError):
     pass
 
 
+async def _try_close_popup(page) -> None:
+    """"이어쓰기/취소" 팝업이나 "도움말"(What's New) 안내 패널이 떠 있으면 닫는다.
+
+    없으면(=선택자가 안 잡히면) 조용히 넘어간다 - 페이지마다 뜨거나 안 뜨거나 하므로
+    실패해도 정상 상황이다. 실제로 있었던 문제: 이 시도를 페이지 진입 직후 딱 한 번만
+    했었는데, "도움말" 패널이 그보다 늦게(제목을 입력하는 동안) 뒤늦게 뜨는 경우가 있어
+    본문 입력 클릭이 패널에 가려 타임아웃나는 원인이 됐다. 그래서 호출부(open_write_draft)가
+    이 함수를 여러 시점(페이지 진입 직후 + 본문 클릭 직전)에 다시 부른다.
+    """
+    try:
+        await page.locator(POPUP_CLOSE_SELECTOR).first.click(timeout=1500)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 
 
@@ -260,10 +275,7 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
     await page.goto(WRITE_URL_TMPL.format(blog_id=blog_id), wait_until="domcontentloaded")
 
     # 새 글쓰기 진입 시 뜨는 "이어쓰기/취소" 등 팝업 처리 (있으면 닫고, 없으면 무시)
-    try:
-        await page.locator(POPUP_CLOSE_SELECTOR).first.click(timeout=3000)
-    except Exception:  # noqa: BLE001
-        pass
+    await _try_close_popup(page)
 
     frame = page.frame_locator(EDITOR_IFRAME_SELECTOR)
 
@@ -271,6 +283,9 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
         await frame.locator(TITLE_SELECTOR).first.click(timeout=10000)
         await page.keyboard.type(title, delay=15)
         await page.keyboard.press("Tab")
+        # 제목을 입력하는 동안 "도움말" 안내 패널이 뒤늦게 뜨는 경우가 있어, 본문을
+        # 클릭하기 직전에 한 번 더 팝업 닫기를 시도한다 (위 주석 참고).
+        await _try_close_popup(page)
         await frame.locator(BODY_SELECTOR).first.click(timeout=10000)
         for line in content_html.split("\n"):
             for text, bold in parse_markdown_line(line):

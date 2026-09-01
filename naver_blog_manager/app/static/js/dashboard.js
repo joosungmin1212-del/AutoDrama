@@ -900,6 +900,22 @@ async function loadProfile() {
   }
 }
 
+// ---------- AI 글쓰기 마스터 프롬프트 열람 (읽기 전용) ----------
+async function loadMasterPrompt() {
+  const statusBox = document.getElementById("master-prompt-status");
+  const textBox = document.getElementById("master-prompt-text");
+  try {
+    const s = await apiFetch("/api/settings");
+    textBox.textContent = s.custom_prompt || s.default_prompt || "";
+    statusBox.textContent = s.custom_prompt && s.custom_prompt !== s.default_prompt
+      ? "✏️ 설정 화면에서 직접 수정한 커스텀 프롬프트가 적용 중입니다."
+      : "📖 기본 마스터 프롬프트가 적용 중입니다 (아직 커스텀 프롬프트를 저장하지 않음).";
+  } catch (e) {
+    statusBox.textContent = "불러오지 못했습니다.";
+    showToast(e.message, true);
+  }
+}
+
 document.getElementById("profile-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -994,4 +1010,5 @@ setupKeywordDetailModal();
 loadDashboard();
 loadProfile();
 loadOnboarding();
+loadMasterPrompt();
 resumeRefreshPollingIfRunning();

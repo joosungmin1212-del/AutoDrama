@@ -52,6 +52,22 @@
   </form>
 </details>
 
+<!-- AI 글쓰기 마스터 프롬프트: 지금 실제로 적용 중인 프롬프트를 그대로 보여준다 (읽기 전용) -
+     수정은 설정 화면의 "커스텀 프롬프트"에서 한다. -->
+<details class="page-card" id="master-prompt-details" style="margin-bottom:16px;">
+  <summary style="cursor:pointer; font-weight:800; font-size:14.5px; color:var(--text-muted);">
+    🖋️ AI 글쓰기 마스터 프롬프트 (펼치기 - 지금 적용 중인 전체 프롬프트를 볼 수 있어요)
+  </summary>
+  <div style="margin-top:12px;">
+    <div class="page-sub" id="master-prompt-status" style="margin-bottom:8px;">불러오는 중...</div>
+    <pre id="master-prompt-text" style="white-space:pre-wrap; word-break:break-word; background:var(--surface-2, #f6f7f9); border-radius:10px; padding:14px; font-size:12.5px; line-height:1.6; max-height:420px; overflow-y:auto; margin:0;"></pre>
+    <div class="page-sub" style="margin-top:8px;">
+      이 프롬프트를 고치고 싶으면 <a href="/settings">설정 화면의 "커스텀 프롬프트"</a>에서
+      수정할 수 있습니다.
+    </div>
+  </div>
+</details>
+
 <div class="stat-grid" id="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 320px));">
   <div class="stat-card">
     <div class="stat-card__head">모니터링 키워드 <span class="stat-card__icon">📚</span></div>
