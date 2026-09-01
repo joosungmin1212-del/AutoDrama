@@ -76,6 +76,8 @@ naver_blog_manager/data/*.db
 naver_blog_manager/data/*.json
 naver_blog_manager/data/.secret.key
 naver_blog_manager/data/.access_token
+naver_blog_manager/data/naver_sessions/
+naver_blog_manager/data/debug/
 naver_blog_manager/.env
 naver_blog_manager/**/__pycache__/
 naver_blog_manager/.pytest_cache/

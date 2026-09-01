@@ -19,6 +19,8 @@ import json
 import logging
 import os
 import re
+from datetime import datetime
+from pathlib import Path
 
 from .. import config
 from . import secure_storage
@@ -122,6 +124,53 @@ async def _dismiss_editor_popups(page) -> int:
         return await page.evaluate(_DISMISS_POPUPS_JS)
     except Exception:  # noqa: BLE001
         return 0
+
+
+_DEBUG_DUMP_IFRAME_JS = r"""
+() => {
+  var f = document.querySelector('iframe#mainFrame');
+  var doc = f && f.contentDocument;
+  return doc ? doc.documentElement.outerHTML : null;
+}
+"""
+
+
+async def _save_debug_snapshot(page, label: str) -> str | None:
+    """자동 입력이 실패한 순간의 화면 캡처 + 실제 페이지/iframe HTML을 저장해둔다.
+
+    지금까지 "도움말"/"작성 중인 글" 팝업 문제를 세 차례 고쳐봤는데(선택자 추측 ->
+    다른 오픈소스 참고 -> 그래도 재현), 매번 사용자에게 개발자도구로 직접 캡처해
+    보내달라고 했다가 엉뚱한 요소(우리 앱 자체의 토스트 등)를 캡처해 오는 등 시행
+    착오가 컸다. 실패하는 바로 그 순간의 실제 DOM을 자동으로 남겨두면, 사용자는
+    이 폴더만 통째로 보내면 되고 추측 없이 정확한 원인을 알 수 있다.
+
+    실패해도(디스크 문제 등) 원래 에러를 절대 가리면 안 되므로 전부 best-effort다.
+    """
+    try:
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        base = config.NAVER_DEBUG_DIR / f"{ts}_{label}"
+
+        try:
+            await page.screenshot(path=str(base) + ".png", full_page=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            top_html = await page.content()
+            (Path(str(base) + "_top.html")).write_text(top_html, encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            iframe_html = await page.evaluate(_DEBUG_DUMP_IFRAME_JS)
+            if iframe_html:
+                (Path(str(base) + "_iframe.html")).write_text(iframe_html, encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+
+        return str(base)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 async def _click_with_recovery(page, frame, selector: str) -> None:
@@ -428,9 +477,18 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
     except Exception as exc:  # noqa: BLE001
         # 자동 입력이 실패해도 브라우저 창은 열어둔다 - 사용자가 직접 복사/붙여넣기 하도록.
         # (창을 닫으면 위에서 예약해둔 _watch_and_cleanup이 알아서 드라이버를 정리한다)
+        # 실패한 바로 그 순간의 화면 캡처 + 실제 페이지/iframe HTML을 자동으로 남겨서,
+        # 다음에 또 실패하면 추측 없이 정확한 원인을 바로 알 수 있게 한다.
+        debug_path = await _save_debug_snapshot(page, "write_failed")
+        debug_note = (
+            f" 진단용 파일이 저장됐습니다: {debug_path}.png / _top.html / _iframe.html "
+            "(이 파일들을 보내주시면 원인을 정확히 알 수 있습니다.)"
+            if debug_path
+            else ""
+        )
         raise NaverAuthError(
             "네이버 에디터 자동 입력에 실패했습니다. 브라우저 창에 직접 붙여넣어주세요. "
-            f"(상세: {exc})"
+            f"(상세: {exc}){debug_note}"
         )
     finally:
         # 성공/실패와 무관하게, 이번에 갱신된 쿠키/로컬스토리지를 다시 저장해둔다

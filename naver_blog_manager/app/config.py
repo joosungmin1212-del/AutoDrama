@@ -27,6 +27,13 @@ NAVER_STATE_PATH = DATA_DIR / "naver_state.json"
 NAVER_SESSIONS_DIR = DATA_DIR / "naver_sessions"
 NAVER_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
+# "네이버로 보내기"가 실패했을 때 화면 캡처 + 실제 페이지 HTML을 자동으로 저장해두는 곳.
+# 선택자 추측을 반복하는 대신, 실패 시점의 진짜 화면 구조를 그대로 남겨서 사용자가
+# 이 폴더만 보내주면 정확한 원인을 바로 알 수 있게 하기 위함(개발자도구를 직접
+# 조작하다 엉뚱한 요소를 캡처하는 실수를 없앤다).
+NAVER_DEBUG_DIR = DATA_DIR / "debug"
+NAVER_DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+
 PORT = int(os.getenv("PORT", "8000"))
 DEFAULT_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 NAVER_USER_AGENT = os.getenv(
