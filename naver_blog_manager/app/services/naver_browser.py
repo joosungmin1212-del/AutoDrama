@@ -77,6 +77,60 @@ async def _try_close_popup(page) -> None:
         pass
 
 
+async def _click_with_recovery(page, frame, selector: str) -> None:
+    """에디터 안의 요소(제목/본문)를 클릭한다.
+
+    실제로 있었던 문제: "작성 중인 글이 있습니다" 확인창이나 "도움말" 안내 패널을
+    선택자로 찾아 미리 닫아보려 했지만(_try_dismiss_resume_draft_dialog,
+    _try_close_popup), 두 차례 다 실제 팝업의 class/구조와 안 맞아 실패했다 -
+    사용자가 결국 직접 "취소"를 눌러야 했다. 네이버 쪽 내부 DOM은 공개 문서가 없고
+    예고 없이 바뀌므로, 선택자를 더 추측하는 대신 **선택자에 의존하지 않는** 방식으로
+    바꿨다:
+      1) 일반 클릭 시도
+      2) 실패하면 Escape를 두 번 눌러본다 - 웬만한 안내 패널/확인창은 Escape로
+         닫히므로, 그 팝업이 무엇이든 상관없이 통한다
+      3) 그래도 실패하면 `.focus()`로 그 요소에 강제로 포커스를 준다. (주의:
+         `click(force=True)`는 액셔너빌리티 "체크"만 건너뛸 뿐, 실제 클릭은 여전히
+         진짜 마우스 클릭처럼 그 좌표의 화면에 실제로 보이는 요소(예: 팝업 배경)에
+         전달된다 - 로컬 HTML로 직접 실험해서 확인한 사실이다. 반면 `.focus()`는
+         화면에 뭐가 덮여 있든 상관없이 DOM 요소에 직접 포커스를 주므로, 그 다음
+         `page.keyboard.type()`이 확실히 원하는 요소에 입력된다 - 이것도 로컬
+         HTML로 overlay가 덮은 contenteditable에 실제로 타이핑되는 것까지 확인했다.
+    """
+    try:
+        await frame.locator(selector).first.click(timeout=6000)
+        return
+    except Exception:  # noqa: BLE001
+        pass
+
+    await page.keyboard.press("Escape")
+    await page.keyboard.press("Escape")
+
+    try:
+        await frame.locator(selector).first.click(timeout=4000)
+        return
+    except Exception:  # noqa: BLE001
+        pass
+
+    await frame.locator(selector).first.focus(timeout=5000)
+
+
+async def _persist_session_state(context, session_blog_id) -> None:
+    """이번 세션에서 갱신된 쿠키/로컬스토리지를 다시 저장한다 (best-effort).
+
+    네이버가 "도움말 봤음" 같은 걸 브라우저 로컬스토리지에 남겨두는 방식이라면,
+    매번 로그인 시점의 옛 storage_state로 새 컨텍스트를 여는 지금 구조에서는 그
+    기록이 이어지지 않아 같은 안내 패널이 매번 다시 뜰 수 있다. 세션이 끝날 때마다
+    최신 상태를 다시 저장해두면, 시간이 지나면서 이런 패널 자체가 안 뜨게 될 수
+    있다. 실패해도 무시한다 - 로그인 자체는 이미 별도로 저장돼 있어 필수는 아니다.
+    """
+    try:
+        updated_state = await context.storage_state()
+        _save_state(updated_state, session_blog_id)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 
 
@@ -306,14 +360,18 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
     frame = page.frame_locator(EDITOR_IFRAME_SELECTOR)
 
     try:
-        await frame.locator(TITLE_SELECTOR).first.click(timeout=10000)
+        # 제목/본문 클릭 모두 선택자 기반 팝업닫기에 기대지 않고, 뭐가 됐든(도움말
+        # 패널이든 확인창이든) Escape+강제클릭으로 뚫고 지나가도록 한다 (위
+        # _click_with_recovery 설명 참고) - 위의 선택자 기반 시도들은 맞으면 더
+        # 빠르게 해결되니 그대로 두되, 안 맞아도 이게 최종 안전망이 된다.
+        await _click_with_recovery(page, frame, TITLE_SELECTOR)
         await page.keyboard.type(title, delay=15)
         await page.keyboard.press("Tab")
         # 제목을 입력하는 동안 위 팝업들이 뒤늦게 뜨는 경우가 있어, 본문을 클릭하기
         # 직전에 한 번 더 시도한다 (위 주석 참고).
         await _try_dismiss_resume_draft_dialog(page)
         await _try_close_popup(page)
-        await frame.locator(BODY_SELECTOR).first.click(timeout=10000)
+        await _click_with_recovery(page, frame, BODY_SELECTOR)
         for line in content_html.split("\n"):
             for text, bold in parse_markdown_line(line):
                 if not text:
@@ -332,5 +390,9 @@ async def open_write_draft(blog_id: str, title: str, content_html: str) -> None:
             "네이버 에디터 자동 입력에 실패했습니다. 브라우저 창에 직접 붙여넣어주세요. "
             f"(상세: {exc})"
         )
+    finally:
+        # 성공/실패와 무관하게, 이번에 갱신된 쿠키/로컬스토리지를 다시 저장해둔다
+        # (위 _persist_session_state 설명 참고).
+        await _persist_session_state(context, session_blog_id)
 
     # 브라우저/컨텍스트는 의도적으로 닫지 않음 - 사용자가 검토 후 직접 발행하도록 둔다.
